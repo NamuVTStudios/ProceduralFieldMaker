@@ -10,8 +10,8 @@ Structure based on the current project layout, extended with the subsystems defi
 
 ```
 ProceduralFieldMaker/
-├── assets/                     # Textures, fonts, icons, static resources
-├── clases/
+├── Assets/                     # Textures, fonts, icons, static resources
+├── Classes/
 │   ├── Base/
 │   │   ├── AppObject.js
 │   │   ├── Tools.js
@@ -51,7 +51,7 @@ ProceduralFieldMaker/
 │   │       └── GodotExporter.js
 │   ├── App.js
 │   └── UI.js
-├── librerias/
+├── Libraries/
 │   ├── pixi.js
 │   ├── three.js
 │   ├── box2D.js
@@ -74,7 +74,7 @@ ProceduralFieldMaker/
 
 This is the one concrete fix needed — the current files mix conventions (`appobject.js`, `toolsmanager.js` in lowercase vs. `magicWand.js`, `magicWandSettings.js` in camelCase). Standardizing removes the ambiguity of "how do I name the next file."
 
-| Current | Recommended |
+| NO | Recommended |
 |---|---|
 | `appobject.js` | `AppObject.js` |
 | `tools.js` | `Tools.js` |
