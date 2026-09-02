@@ -1,0 +1,5 @@
+class AppObject {
+    constructor(parameters) {
+        
+    }
+}
