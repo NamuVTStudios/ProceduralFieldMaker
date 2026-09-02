@@ -6,8 +6,8 @@ class AppManager {
         this.toolsManager = new ToolsManager(this);
         this.windowsManager = new WindowsManager(this);
         this.appManager.ui = new UI(this)
-        this.renderer = null;   // Renderer2D o Renderer3D
-        this.physics = null;    // PhysicsEngine2D o PhysicsEngine3D
+        this.renderer = null;   // Renderer2D or Renderer3D
+        this.physics = null;    // PhysicsEngine2D or PhysicsEngine3D
     }
 
     register(appObject) {
@@ -27,7 +27,7 @@ class AppManager {
         }
     }
 
-    // Dentro de Renderer2D o Renderer3D, llamado desde AppManager.onResize()
+    // Inside Renderer2D or Renderer3D, called from AppManager.onResize()
     onResize(width, height) {
         const dpr = Math.min(window.devicePixelRatio || 1, 2); // cap en 2 para no matar el rendimiento en mobile
         this.pixiApp.renderer.resize(width, height);

@@ -3,7 +3,6 @@ class UI {
         this.appManager = appManager;
         this.container = document.getElementById('controles');
         this._isMobile = this._detectMobile();
-
         this._buildToolButtons();
         window.addEventListener('resize', () => this._onResize());
     }

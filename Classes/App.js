@@ -6,12 +6,12 @@ class App {
         this._registerDefaultTools();
         this._registerDefaultWindows();
         this._bindGlobalEvents();
-        this.appManager.init(); // arranca en modo por defecto (ej. '2d')
+        this.appManager.init(); // starts in default mode (e.g., '2d')
         this._startLoop();
     }
 
     _setupCanvas() {
-        this.container = document.body; // o un div específico
+        this.container = document.body; // or a specific div
         this.appManager.setContainer(this.container);
     }
 

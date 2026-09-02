@@ -8,6 +8,4 @@ class ToolsManager {
         this.tools.push(tool);
         this.appManager.register(tool); // Tool sigue siendo un AppObject
     }
-
-    getActiveTool() { /* ... */ }
 }
