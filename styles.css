@@ -1,27 +1,44 @@
-@font-face {
-    font-family: 'PixelifySans';
-    src: url('assets/pixelifysans.ttf') format('truetype');
-}
-
-body {
+html, body {
     margin: 0px;
     padding: 0px;
     overflow: hidden;
+    height: 100%;
+    overscroll-behavior: none;      /* evita el "bounce" de scroll en mobile */
+    -webkit-user-select: none;
+    user-select: none;
 }
 
-html {
-    margin: 0px;
-    padding: 0px;
+#app-canvas-container {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100dvh;                  /* dvh = viewport real, ignora la barra del navegador mobile */
+    touch-action: none;              /* clave: el navegador no intercepta gestos, se los dejás a tus Tools */
+}
+
+#app-canvas-container canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
 }
 
 #controles {
     display: flex;
     position: absolute;
-    top: 10px;
-    left: 10px;
+    top: max(10px, env(safe-area-inset-top));
+    left: max(10px, env(safe-area-inset-left));
     gap: 10px;
 }
 
-button {
-    font-size: 20px;
+/* En pantallas chicas, targets más grandes para el dedo y layout distinto */
+@media (max-width: 600px) {
+    #controles {
+        top: auto;
+        bottom: max(10px, env(safe-area-inset-bottom));
+        gap: 14px;
+    }
+    button {
+        font-size: 24px;
+        padding: 10px 14px;
+    }
 }

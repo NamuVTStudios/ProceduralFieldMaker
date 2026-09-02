@@ -1,9 +1,9 @@
 class AppObject {
-    static instance = null;
-    constructor(parameters) {
-        if (!AppObject.instance) {
-            AppObject.instance = this;
-        }
-        return AppObject.instance;
-    }
+  constructor(appManager) {
+    this.appManager = appManager;
+    this.active = true;
+  }
+  onInit() {}
+  onUpdate(dt) {}
+  onDestroy() {}
 }
