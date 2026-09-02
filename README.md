@@ -16,31 +16,6 @@ ProceduralFieldMaker/
 │   │   ├── AppObject.js
 │   │   ├── Tools.js
 │   │   └── Windows.js
-│   ├── Managers/
-│   │   ├── AppManager.js
-│   │   ├── ToolsManager.js
-│   │   └── WindowsManager.js
-│   ├── Tools/
-│   │   ├── Brush.js
-│   │   ├── Eraser.js
-│   │   └── MagicWand.js
-│   ├── Windows/
-│   │   ├── BrushSettings.js
-│   │   ├── EraserSettings.js
-│   │   └── MagicWandSettings.js
-│   ├── Map/                    # (new) MapData, generation, destruction
-│   │   ├── MapData2D.js
-│   │   ├── MapData3D.js
-│   │   ├── Generators/
-│   │   │   ├── NoiseGenerator.js
-│   │   │   └── CellularAutomata.js
-│   │   └── DestructionEngine.js
-│   ├── Render/                 # (new) Renderer2D/Renderer3D as AppObject
-│   │   ├── Renderer2D.js
-│   │   └── Renderer3D.js
-│   ├── Physics/                # (new) PhysicsEngine2D (Box2D) / PhysicsEngine3D (Cannon.js)
-│   │   ├── PhysicsEngine2D.js
-│   │   └── PhysicsEngine3D.js
 │   ├── Export/                 # (new) ExportRegistry + individual exporters
 │   │   ├── ExportRegistry.js
 │   │   └── Exporters/
@@ -49,6 +24,31 @@ ProceduralFieldMaker/
 │   │       ├── OBJExporter.js
 │   │       ├── UnityExporter.js
 │   │       └── GodotExporter.js
+│   ├── Managers/
+│   │   ├── AppManager.js
+│   │   ├── ToolsManager.js
+│   │   └── WindowsManager.js
+│   ├── Map/                    # (new) MapData, generation, destruction
+│   │   ├── MapData2D.js
+│   │   ├── MapData3D.js
+│   │   ├── Generators/
+│   │   │   ├── NoiseGenerator.js
+│   │   │   └── CellularAutomata.js
+│   │   └── DestructionEngine.js
+│   ├── Physics/                # (new) PhysicsEngine2D (Box2D) / PhysicsEngine3D (Cannon.js)
+│   │   ├── PhysicsEngine2D.js
+│   │   └── PhysicsEngine3D.js
+│   ├── Render/                 # (new) Renderer2D/Renderer3D as AppObject
+│   │   ├── Renderer2D.js
+│   │   └── Renderer3D.js
+│   ├── Tools/
+│   │   ├── Brush.js
+│   │   ├── Eraser.js
+│   │   └── MagicWand.js
+│   ├── Windows/
+│   │   ├── BrushSettings.js
+│   │   ├── EraserSettings.js
+│   │   └── MagicWandSettings.js
 │   ├── App.js
 │   └── UI.js
 ├── Libraries/
