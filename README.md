@@ -19,22 +19,22 @@ ProceduralFieldMaker/
 │   ├── Export/                 # (new) ExportRegistry + individual exporters
 │   │   ├── ExportRegistry.js
 │   │   └── Exporters/
+│   │       ├── GLBExporter.js
+│   │       └── GodotExporter.js
 │   │       ├── JSONExporter.js
 │   │       ├── PNGExporter.js
-│   │       ├── OBJExporter.js
 │   │       ├── UnityExporter.js
-│   │       └── GodotExporter.js
 │   ├── Managers/
 │   │   ├── AppManager.js
 │   │   ├── ToolsManager.js
 │   │   └── WindowsManager.js
 │   ├── Map/                    # (new) MapData, generation, destruction
-│   │   ├── MapData2D.js
-│   │   ├── MapData3D.js
 │   │   ├── Generators/
 │   │   │   ├── NoiseGenerator.js
 │   │   │   └── CellularAutomata.js
-│   │   └── DestructionEngine.js
+│   │   ├── MapData2D.js
+│   │   ├── MapData3D.js
+│   │   └── TerrainModificationEngine.js
 │   ├── Physics/                # (new) PhysicsEngine2D (Box2D) / PhysicsEngine3D (Cannon.js)
 │   │   ├── PhysicsEngine2D.js
 │   │   └── PhysicsEngine3D.js
