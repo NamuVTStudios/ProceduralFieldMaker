@@ -17,13 +17,13 @@ ProceduralFieldMaker/
 │   │   ├── Tools.js
 │   │   └── Windows.js
 │   ├── Export/                 # (new) ExportRegistry + individual exporters
-│   │   ├── ExportRegistry.js
-│   │   └── Exporters/
-│   │       ├── GLBExporter.js
-│   │       └── GodotExporter.js
-│   │       ├── JSONExporter.js
-│   │       ├── PNGExporter.js
-│   │       ├── UnityExporter.js
+│   │   ├── Exporters/
+│   │   │   ├── GLBExporter.js
+│   │   │   └── GodotExporter.js
+│   │   │   ├── JSONExporter.js
+│   │   │   ├── PNGExporter.js
+│   │   │   ├── UnityExporter.js
+│   │   └── ExportRegistry.js
 │   ├── Managers/
 │   │   ├── AppManager.js
 │   │   ├── ToolsManager.js
@@ -39,6 +39,8 @@ ProceduralFieldMaker/
 │   │   ├── PhysicsEngine2D.js
 │   │   └── PhysicsEngine3D.js
 │   ├── Render/                 # (new) Renderer2D/Renderer3D as AppObject
+│   │   ├── CameraController2D.js
+│   │   ├── CameraController3D.js
 │   │   ├── Renderer2D.js
 │   │   └── Renderer3D.js
 │   ├── Tools/

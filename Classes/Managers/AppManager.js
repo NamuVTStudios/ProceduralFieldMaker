@@ -23,8 +23,12 @@ class AppManager {
 
     update(dt) {
         for (const obj of this.objects) {
-            if (obj.active) obj.onUpdate(dt);
+            verifyObjects(obj, dt);
         }
+    }
+
+    verifyObjects(obj, dt) {
+        if (obj.active) obj.onUpdate(dt);
     }
 
     // Inside Renderer2D or Renderer3D, called from AppManager.onResize()
