@@ -26,12 +26,21 @@ ProceduralFieldMaker/
 │   │   └── ExportRegistry.js
 │   ├── Managers/
 │   │   ├── AppManager.js
+│   │   ├── MapLayerManager.js
 │   │   ├── ToolsManager.js
 │   │   └── WindowsManager.js
 │   ├── Map/                    # (new) MapData, generation, destruction
+│   │   ├── Curves/
+│   │   │   └── BezierPath3D.js
+│   │   ├── Filters/
+│   │   │   ├── GaussianBlurFilter.js
+│   │   │   └── ThresholdFilter.js
 │   │   ├── Generators/
 │   │   │   ├── NoiseGenerator.js
 │   │   │   └── CellularAutomata.js
+│   │   ├── Modeling/
+│   │   │   ├── BooleanProcessor.js
+│   │   │   └── PrimitiveGenerator.js
 │   │   ├── MapData2D.js
 │   │   ├── MapData3D.js
 │   │   └── TerrainModificationEngine.js
@@ -45,12 +54,16 @@ ProceduralFieldMaker/
 │   │   └── Renderer3D.js
 │   ├── Tools/
 │   │   ├── Brush.js
+│   │   ├── CloneStamp.js
 │   │   ├── Eraser.js
-│   │   └── MagicWand.js
+│   │   ├── MagicWand.js
+│   │   └── NoiseBrush.js
 │   ├── Windows/
 │   │   ├── BrushSettings.js
+│   │   ├── CloneStampSettings.js
 │   │   ├── EraserSettings.js
-│   │   └── MagicWandSettings.js
+│   │   ├── MagicWandSettings.js
+│   │   └── NoiseBrushSettings.js
 │   ├── App.js
 │   └── UI.js
 ├── Libraries/
