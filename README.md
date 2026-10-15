@@ -44,9 +44,6 @@ ProceduralFieldMaker/
 │   │   ├── MapData2D.js
 │   │   ├── MapData3D.js
 │   │   └── TerrainModificationEngine.js
-│   ├── Physics/                # (new) PhysicsEngine2D (Box2D) / PhysicsEngine3D (Cannon.js)
-│   │   ├── PhysicsEngine2D.js
-│   │   └── PhysicsEngine3D.js
 │   ├── Render/                 # (new) Renderer2D/Renderer3D as AppObject
 │   │   ├── CameraController2D.js
 │   │   ├── CameraController3D.js
@@ -67,10 +64,8 @@ ProceduralFieldMaker/
 │   ├── App.js
 │   └── UI.js
 ├── Libraries/
-│   ├── pixi.js
-│   ├── three.js
-│   ├── box2D.js
-│   └── cannon.js
+│   ├── babylon.js
+│   └── pixi.js
 ├── utils.js
 ├── index.html
 ├── styles.css

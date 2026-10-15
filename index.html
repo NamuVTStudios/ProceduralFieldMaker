@@ -1,4 +1,5 @@
 <html>
+
 <head>
     <title>Procedural Field Maker</title>
     <meta charset="utf-8" />
@@ -9,10 +10,8 @@
     <link rel="icon" type="image/png" href="Assets/CURRENT LOGO.png" />
     <link rel="apple-touch-icon" href="Assets/CURRENT LOGO.png" />
     <!-- 1 import the libraries -->
-    <script src="Libraries/box2D.js"></script>
-    <script src="Libraries/cannon.js"></script>
     <script src="Libraries/pixi.js"></script>
-    <script src="Libraries/three.js"></script>
+    <script src="Libraries/babylon.js"></script>
     <!-- 2 Import utilities and classes for the app's objects -->
     <script src="utils.js"></script>
     <script src="Classes/Base/AppObject.js"></script>
@@ -38,8 +37,6 @@
     <script src="Classes/Map/MapData2D.js"></script>
     <script src="Classes/Map/MapData3D.js"></script>
     <script src="Classes/Map/TerrainModificationEngine.js"></script>
-    <script src="Classes/Physics/PhysicsEngine2D.js"></script>
-    <script src="Classes/Physics/PhysicsEngine3D.js"></script>
     <script src="Classes/Render/CameraController2D.js"></script>
     <script src="Classes/Render/CameraController3D.js"></script>
     <script src="Classes/Render/Renderer2D.js"></script>
@@ -54,9 +51,11 @@
     <!-- and finally, we import the App class -->
     <script src="Classes/App.js"></script>
 </head>
+
 <body>
     <script>
         const app = new App()
     </script>
 </body>
+
 </html>
