@@ -67,10 +67,6 @@ class TerrainModificationEngine {
       this._setMaterialAt(mapData, x, y, z, AIR_MATERIAL_ID);
       anyDestroyed = true;
     });
-
-    if (anyDestroyed) {
-      this.checkConnectivityAndCollapse(mapData, region);
-    }
     return { affectedRegion: region, anyDestroyed };
   }
 
@@ -159,7 +155,6 @@ class TerrainModificationEngine {
     }
 
     const region = this._computeBoundingBox(mapData2D, target, radius);
-    this.checkConnectivityAndCollapse(mapData2D, region);
     return { affectedRegion: region };
   }
 
@@ -172,12 +167,6 @@ class TerrainModificationEngine {
    * @param {object} mapData
    * @param {object} region - bounding box afectada (ver _computeBoundingBox)
    */
-  checkConnectivityAndCollapse(mapData, region) {
-    const islands = this._findDisconnectedIslands(mapData, region);
-    for (const island of islands) {
-      this._convertIslandToDebris(mapData, island);
-    }
-  }
 
   /**
    * Bounding box de análisis: el radio de impacto más un margen fijo, para no escanear el mapa completo en cada operación.
