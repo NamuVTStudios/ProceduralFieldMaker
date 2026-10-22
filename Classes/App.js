@@ -5,8 +5,9 @@ class App {
         this._setupCanvas();
         this._registerDefaultTools();
         this._registerDefaultWindows();
+        // La UI se crea después de registrar las tools: arma el menú 2D/3D y la barra de herramientas
+        this.appManager.ui = new UI(this.appManager);
         this._bindGlobalEvents();
-        this.appManager.init(); // starts in default mode (e.g., '2d')
         this._startLoop();
     }
 
@@ -48,7 +49,7 @@ class App {
     }
 
     _checkLibraries() {
-        const required = { PIXI: window.PIXI, THREE: window.THREE, Box2D: window.Box2D, CANNON: window.CANNON };
+        const required = { PIXI: window.PIXI, BABYLON: window.BABYLON };
         const missing = Object.entries(required).filter(([, lib]) => !lib).map(([name]) => name);
         if (missing.length) {
             throw new Error(`Faltan librerías: ${missing.join(', ')} — revisá los <script> en el HTML`);

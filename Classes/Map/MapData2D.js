@@ -25,6 +25,19 @@ function createMaterial(data) {
 }
 
 /**
+ * Catálogo de materiales por defecto (TDD 4.3 y 6.1): dureza Arena 1, Tierra 3, Roca 6; Agua 0.
+ * Compartido entre 2D y 3D, se usa al crear un lienzo nuevo.
+ */
+function createDefaultMaterials() {
+  return [
+    createMaterial({ id: 1, name: 'Arena', hardness: 1, color: '#e0c068' }),
+    createMaterial({ id: 2, name: 'Tierra', hardness: 3, color: '#8b5a2b' }),
+    createMaterial({ id: 3, name: 'Roca', hardness: 6, color: '#7f8c8d' }),
+    createMaterial({ id: 4, name: 'Agua', hardness: 0, color: '#3a7bd5', textureId: 'water_tex' }),
+  ];
+}
+
+/**
  * Crea una estructura MapData2D vacía (llena de aire).
  * @param {{width:number, height:number, cellSize?:number, seed:string, materials:object[]}} config
  */
@@ -36,7 +49,7 @@ function createMapData2D(config) {
     cells: new Uint8Array(config.width * config.height).fill(AIR_MATERIAL_ID),
     materials: config.materials,
     seed: config.seed,
-    seedHash: hashSeedToInt(config.seed), // ver utils.js
+    seedHash: hashSeedToInt(config.seed), // definida en NoiseGenerator.js
   };
 }
 

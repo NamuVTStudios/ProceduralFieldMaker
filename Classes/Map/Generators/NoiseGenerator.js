@@ -10,7 +10,7 @@
  * @param {string} seedString
  * @returns {number}
  */
-export function hashSeedToInt(seedString) {
+function hashSeedToInt(seedString) {
   let hash = 0;
   for (let i = 0; i < seedString.length; i++) {
     hash = (Math.imul(31, hash) + seedString.charCodeAt(i)) | 0;
@@ -32,7 +32,7 @@ function createSeededRandom(a) {
   };
 }
 
-export class NoiseGenerator {
+class NoiseGenerator {
   /**
    * @param {string|number} seed Puede ser la cadena visual (ej: "MONTANA-7X2") o el hash directo.
    */

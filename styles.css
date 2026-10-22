@@ -22,6 +22,91 @@ html, body {
     height: 100%;
 }
 
+/* ---- UI (toda la interfaz la crea Classes/UI.js) ---- */
+.ui-root {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    pointer-events: none;           /* no bloquea el input del lienzo fuera de los controles */
+    font-family: system-ui, sans-serif;
+}
+
+.ui-root button {
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+.ui-hidden {
+    display: none !important;
+}
+
+.ui-menu {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #1a1a1a;
+    pointer-events: auto;
+}
+
+.ui-menu-card {
+    text-align: center;
+    color: #eeeeee;
+    padding: 24px;
+}
+
+.ui-menu-title {
+    margin: 0 0 8px;
+    font-size: 32px;
+}
+
+.ui-menu-subtitle {
+    margin: 0 0 28px;
+    color: #aaaaaa;
+}
+
+.ui-menu-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    justify-content: center;
+}
+
+.ui-mode-button {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 200px;
+    padding: 24px 16px;
+    background: #2a2a2a;
+    color: #eeeeee;
+    border: 2px solid #444444;
+    border-radius: 8px;
+}
+
+.ui-mode-button:hover {
+    border-color: #8ab4f8;
+}
+
+.ui-mode-title {
+    font-size: 40px;
+    font-weight: bold;
+}
+
+.ui-mode-desc {
+    font-size: 14px;
+    color: #aaaaaa;
+}
+
+#controles button.active {
+    outline: 2px solid #8ab4f8;
+}
+
+#controles .ui-menu-button {
+    margin-left: 10px;
+}
+
 #controles {
     display: flex;
     position: absolute;

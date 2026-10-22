@@ -1,6 +1,6 @@
 /**
  * utils.js
- * Funciones sueltas de propósito general, sin relación con ninguna clase en particular. Nombres verbo + descriptivos para evitar colisión con globals de Pixi/Three/Box2D/Cannon.
+ * Funciones sueltas de propósito general, sin relación con ninguna clase en particular. Nombres verbo + descriptivos para evitar colisión con globals de Pixi/Babylon.
  */
 
 /**
@@ -35,4 +35,9 @@ function downloadBlob(blob, filename) {
     link.download = filename;
     link.click();
     URL.revokeObjectURL(url);
+}
+
+/** Seed alfanumérica aleatoria (ej. "PFM-7X2K9Q"); es la que ve y podrá editar el usuario. */
+function createRandomSeed() {
+  return 'PFM-' + Math.random().toString(36).slice(2, 8).toUpperCase();
 }

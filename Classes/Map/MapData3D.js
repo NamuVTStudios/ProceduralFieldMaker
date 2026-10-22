@@ -19,7 +19,7 @@ function createMapData3D(config) {
     voxels: new Uint8Array(config.sizeX * config.sizeY * config.sizeZ).fill(AIR_MATERIAL_ID),
     materials: config.materials,
     seed: config.seed,
-    seedHash: hashSeedToInt(config.seed), // ver utils.js
+    seedHash: hashSeedToInt(config.seed), // definida en NoiseGenerator.js
   };
 }
 

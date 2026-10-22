@@ -13,8 +13,15 @@ class Renderer2D extends AppObject {
     // Contenedor del mundo (acá se dibuja el mapa y la cámara lo mueve/zoomea)
     this.worldContainer = null;
 
+    // Marco del lienzo (fondo + borde) para ver los límites del área de trabajo aunque esté vacía
+    this.frameGraphics = null;
+
     // Objeto gráfico de Pixi donde se dibujan las celdas
     this.terrainGraphics = null;
+
+    // Control de la carrera entre onInit (async) y onDestroy
+    this._ready = false;
+    this._destroyed = false;
   }
 
   /**
@@ -30,6 +37,14 @@ class Renderer2D extends AppObject {
       antialias: false,          // Pixeles nítidos
     });
 
+    // Si el lienzo se cerró mientras Pixi se inicializaba, limpiar y salir
+    if (this._destroyed) {
+      this.pixiApp.destroy(true, { children: true });
+      this.pixiApp = null;
+      return;
+    }
+    this._ready = true;
+
     // Agregar el canvas generado por Pixi al DOM (al body del documento)
     document.body.appendChild(this.pixiApp.canvas);
 
@@ -37,14 +52,55 @@ class Renderer2D extends AppObject {
     this.worldContainer = new PIXI.Container();
     this.pixiApp.stage.addChild(this.worldContainer);
 
-    // 3. Crear el objeto gráfico para las celdas sólidas
+    // 3. Marco del lienzo (se dibuja debajo del terreno) y objeto gráfico para las celdas sólidas
+    this.frameGraphics = new PIXI.Graphics();
+    this.worldContainer.addChild(this.frameGraphics);
     this.terrainGraphics = new PIXI.Graphics();
     this.worldContainer.addChild(this.terrainGraphics);
 
-    // 4. Si el AppManager ya tiene un mapa 2D cargado, dibujarlo
+    // 4. Si el AppManager ya tiene un mapa 2D cargado, dibujarlo y encuadrarlo en pantalla
     if (this.appManager.mapData) {
+      this._drawCanvasFrame(this.appManager.mapData);
       this.renderFullMap(this.appManager.mapData);
+      this._fitWorld();
     }
+  }
+
+  /** Dibuja el fondo y el borde del área de trabajo. */
+  _drawCanvasFrame(mapData2D) {
+    const cellSize = mapData2D.cellSize || 16;
+    const width = mapData2D.width * cellSize;
+    const height = mapData2D.height * cellSize;
+
+    this.frameGraphics.clear();
+    this.frameGraphics.rect(0, 0, width, height).fill(0x242424);
+    this.frameGraphics.rect(0, 0, width, height).stroke({ width: 2, color: 0x5a5a5a, alignment: 1 });
+  }
+
+  /**
+   * Escala (solo para achicar) y centra el lienzo en la ventana, así se ve completo en PC y celular.
+   * Provisorio: cuando exista CameraController2D (paneo/zoom), él toma el control de esta transformación.
+   */
+  _fitWorld() {
+    const mapData2D = this.appManager.mapData;
+    if (!mapData2D || !this.worldContainer) return;
+
+    const cellSize = mapData2D.cellSize || 16;
+    const width = mapData2D.width * cellSize;
+    const height = mapData2D.height * cellSize;
+    const margin = 80;
+
+    const scale = Math.min(1, (window.innerWidth - margin) / width, (window.innerHeight - margin) / height);
+    this.worldContainer.scale.set(scale);
+    this.worldContainer.position.set(
+      (window.innerWidth - width * scale) / 2,
+      (window.innerHeight - height * scale) / 2
+    );
+  }
+
+  /** Llamado por AppManager.onResize() cuando cambia el tamaño de la ventana. */
+  onResize() {
+    this._fitWorld();
   }
 
   /**
@@ -101,7 +157,9 @@ class Renderer2D extends AppObject {
    * Limpieza al desmontar el modo 2D.
    */
   onDestroy() {
-    if (this.pixiApp) {
+    this._destroyed = true;
+    // Si Pixi todavía se está inicializando, onInit se encarga de destruirlo al terminar
+    if (this._ready && this.pixiApp) {
       this.pixiApp.destroy(true, { children: true });
       this.pixiApp = null;
     }
