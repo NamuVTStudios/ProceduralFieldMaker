@@ -28,50 +28,89 @@ class Renderer2D extends AppObject {
    * Se ejecuta al registrar e inicializar el renderizador.
    */
   async onInit() {
-    // 1. Inicializar la app de Pixi.js ocupando la ventana o el contenedor principal
+    if (!(await this._initializePixiApp())) return;
+    this._mountWorkspace();
+    this._restoreMapView();
+  }
+
+  async _initializePixiApp() {
     this.pixiApp = new PIXI.Application();
-
-    await this.pixiApp.init({
-      resizeTo: window,
-      backgroundColor: 0x1a1a1a, // Fondo oscuro estilo editor
-      antialias: false,          // Pixeles nítidos
-    });
-
-    // Si el lienzo se cerró mientras Pixi se inicializaba, limpiar y salir
+    await this.pixiApp.init(this._createPixiConfiguration());
     if (this._destroyed) {
-      this.pixiApp.destroy(true, { children: true });
-      this.pixiApp = null;
-      return;
+      this._destroyInitializingApp();
+      return false;
     }
+    return true;
+  }
+
+  _createPixiConfiguration() {
+    return {
+      resizeTo: window,
+      backgroundColor: 0x1a1a1a,
+      antialias: false,
+    };
+  }
+
+  _destroyInitializingApp() {
+    if (!this.pixiApp) return;
+    this.pixiApp.destroy(true, { children: true });
+    this.pixiApp = null;
+  }
+
+  _mountWorkspace() {
     this._ready = true;
-
-    // Agregar el canvas generado por Pixi al DOM (al body del documento)
     document.body.appendChild(this.pixiApp.canvas);
+    this._createWorldLayers();
+  }
 
-    // 2. Crear el contenedor del mundo
+  _createWorldLayers() {
+    this._createWorldContainer();
+    this._createFrameGraphics();
+    this._createTerrainGraphics();
+  }
+
+  _createWorldContainer() {
     this.worldContainer = new PIXI.Container();
     this.pixiApp.stage.addChild(this.worldContainer);
+  }
 
-    // 3. Marco del lienzo (se dibuja debajo del terreno) y objeto gráfico para las celdas sólidas
+  _createFrameGraphics() {
     this.frameGraphics = new PIXI.Graphics();
     this.worldContainer.addChild(this.frameGraphics);
+  }
+
+  _createTerrainGraphics() {
     this.terrainGraphics = new PIXI.Graphics();
     this.worldContainer.addChild(this.terrainGraphics);
+  }
 
-    // 4. Si el AppManager ya tiene un mapa 2D cargado, dibujarlo y encuadrarlo en pantalla
-    if (this.appManager.mapData) {
-      this._drawCanvasFrame(this.appManager.mapData);
-      this.renderFullMap(this.appManager.mapData);
-      this._fitWorld();
-    }
+  _restoreMapView() {
+    const mapData = this.appManager.mapData;
+    if (!mapData) return;
+    this._drawRestoredMap(mapData);
+  }
+
+  _drawRestoredMap(mapData) {
+    this._drawCanvasFrame(mapData);
+    this.renderFullMap(mapData);
+    this._fitWorld();
   }
 
   /** Dibuja el fondo y el borde del área de trabajo. */
   _drawCanvasFrame(mapData2D) {
-    const cellSize = mapData2D.cellSize || 16;
-    const width = mapData2D.width * cellSize;
-    const height = mapData2D.height * cellSize;
+    this._drawFrameGraphics(this._getCanvasDimensions(mapData2D));
+  }
 
+  _getCanvasDimensions(mapData2D) {
+    const cellSize = mapData2D.cellSize || 16;
+    return {
+      cellSize,
+      width: mapData2D.width * cellSize,
+      height: mapData2D.height * cellSize,
+    };
+  }
+
+  _drawFrameGraphics({ width, height }) {
     this.frameGraphics.clear();
     this.frameGraphics.rect(0, 0, width, height).fill(0x242424);
     this.frameGraphics.rect(0, 0, width, height).stroke({ width: 2, color: 0x5a5a5a, alignment: 1 });
@@ -82,15 +121,28 @@ class Renderer2D extends AppObject {
    * Provisorio: cuando exista CameraController2D (paneo/zoom), él toma el control de esta transformación.
    */
   _fitWorld() {
+    const context = this._getWorldFitContext();
+    if (!context) return;
+    this._applyWorldFit(context);
+  }
+
+  _getWorldFitContext() {
     const mapData2D = this.appManager.mapData;
-    if (!mapData2D || !this.worldContainer) return;
+    if (!mapData2D || !this.worldContainer) return null;
+    return this._createWorldFitContext(mapData2D);
+  }
 
-    const cellSize = mapData2D.cellSize || 16;
-    const width = mapData2D.width * cellSize;
-    const height = mapData2D.height * cellSize;
+  _createWorldFitContext(mapData2D) {
+    const dimensions = this._getCanvasDimensions(mapData2D);
+    return { ...dimensions, scale: this._calculateWorldScale(dimensions) };
+  }
+
+  _calculateWorldScale({ width, height }) {
     const margin = 80;
+    return Math.min(1, (window.innerWidth - margin) / width, (window.innerHeight - margin) / height);
+  }
 
-    const scale = Math.min(1, (window.innerWidth - margin) / width, (window.innerHeight - margin) / height);
+  _applyWorldFit({ width, height, scale }) {
     this.worldContainer.scale.set(scale);
     this.worldContainer.position.set(
       (window.innerWidth - width * scale) / 2,
@@ -109,40 +161,52 @@ class Renderer2D extends AppObject {
    */
   renderFullMap(mapData2D) {
     if (!this.terrainGraphics || !mapData2D) return;
+    this._renderMapData(mapData2D);
+  }
 
+  _renderMapData(mapData2D) {
+    const renderData = this._prepareMapRenderData(mapData2D);
     this.terrainGraphics.clear();
+    this._drawMapRows(mapData2D, renderData.cellSize, renderData.materialColorMap);
+  }
 
-    const cellSize = mapData2D.cellSize || 16;
+  _prepareMapRenderData(mapData2D) {
+    return {
+      cellSize: mapData2D.cellSize || 16,
+      materialColorMap: this._createMaterialColorMap(mapData2D.materials),
+    };
+  }
 
-    // Mapa rápido de materiales por ID para no buscarlos en cada celda
-    const materialColorMap = new Map();
-    for (const mat of mapData2D.materials) {
-      // Convierte string hex '#2ecc71' a entero 0x2ecc71 para Pixi
-      const hexNum = parseInt(mat.color.replace('#', ''), 16);
-      materialColorMap.set(mat.id, hexNum);
+  _createMaterialColorMap(materials) {
+    const colorMap = new Map();
+    for (const material of materials) {
+      colorMap.set(material.id, parseInt(material.color.replace('#', ''), 16));
     }
+    return colorMap;
+  }
 
-    // Recorremos todo el mapa celda por celda
+  _drawMapRows(mapData2D, cellSize, materialColorMap) {
     for (let y = 0; y < mapData2D.height; y++) {
-      for (let x = 0; x < mapData2D.width; x++) {
-        // Leemos el byte de esta celda usando la función de tu compañero
-        const materialId = getCell2D(mapData2D, x, y);
-
-        // Si es aire (0), no dibujamos nada
-        if (materialId === 0) continue;
-
-        const color = materialColorMap.get(materialId) || 0xffffff;
-
-        // Dibujamos el cuadradito
-        this.terrainGraphics.rect(
-          x * cellSize,
-          y * cellSize,
-          cellSize,
-          cellSize
-        );
-        this.terrainGraphics.fill(color);
-      }
+      this._drawMapRow(mapData2D, y, cellSize, materialColorMap);
     }
+  }
+
+  _drawMapRow(mapData2D, y, cellSize, materialColorMap) {
+    for (let x = 0; x < mapData2D.width; x++) {
+      this._drawMapCell(mapData2D, x, y, cellSize, materialColorMap);
+    }
+  }
+
+  _drawMapCell(mapData2D, x, y, cellSize, materialColorMap) {
+    const materialId = getCell2D(mapData2D, x, y);
+    if (materialId === 0) return;
+    const color = materialColorMap.get(materialId) || 0xffffff;
+    this._drawSolidCell(x, y, cellSize, color);
+  }
+
+  _drawSolidCell(x, y, cellSize, color) {
+    this.terrainGraphics.rect(x * cellSize, y * cellSize, cellSize, cellSize);
+    this.terrainGraphics.fill(color);
   }
 
   /**

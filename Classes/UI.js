@@ -10,12 +10,22 @@ class UI {
         this.appManager = appManager;
         this._isMobile = this._detectMobile();
         this.toolButtons = new Map(); // tool -> botón
+        this._buildInitialView();
+        this._bindResizeEvents();
+    }
 
+    _buildInitialView() {
         this._buildRoot();
+        this._buildMenuAndToolbar();
+    }
+
+    _buildMenuAndToolbar() {
         this._buildMenu();
         this._buildToolbar();
         this.showMenu();
+    }
 
+    _bindResizeEvents() {
         window.addEventListener('resize', () => this._onResize());
     }
 
@@ -39,55 +49,101 @@ class UI {
 
     _buildMenu() {
         this.menu = this._el('div', 'ui-menu');
+        this.menu.appendChild(this._buildMenuCard());
+        this.root.appendChild(this.menu);
+    }
+
+    _buildMenuCard() {
         const card = this._el('div', 'ui-menu-card');
+        this._appendMenuHeading(card);
+        this._appendMenuOptions(card);
+        return card;
+    }
+
+    _appendMenuHeading(card) {
         card.appendChild(this._el('h1', 'ui-menu-title', 'Procedural Field Maker'));
         card.appendChild(this._el('p', 'ui-menu-subtitle', 'Elegí la dimensión del lienzo de trabajo'));
+    }
 
+    _appendMenuOptions(card) {
+        card.appendChild(this._createMenuOptions());
+    }
+
+    _createMenuOptions() {
         const options = this._el('div', 'ui-menu-options');
         options.appendChild(this._buildModeButton('2d', '2D', 'Corte transversal'));
         options.appendChild(this._buildModeButton('3d', '3D', 'Espacio volumétrico'));
-        card.appendChild(options);
-
-        this.menu.appendChild(card);
-        this.root.appendChild(this.menu);
+        return options;
     }
 
     _buildModeButton(mode, title, description) {
         const btn = this._el('button', 'ui-mode-button');
-        btn.appendChild(this._el('span', 'ui-mode-title', title));
-        btn.appendChild(this._el('span', 'ui-mode-desc', description));
+        this._appendModeButtonLabels(btn, title, description);
         btn.addEventListener('click', () => this._startProject(mode));
         return btn;
+    }
+
+    _appendModeButtonLabels(button, title, description) {
+        button.appendChild(this._el('span', 'ui-mode-title', title));
+        button.appendChild(this._el('span', 'ui-mode-desc', description));
     }
 
     _buildToolbar() {
         this.toolbar = this._el('div');
         this.toolbar.id = 'controles';
+        this._mountToolbar();
+    }
+
+    _mountToolbar() {
         this.root.appendChild(this.toolbar);
         this.refreshToolButtons();
     }
 
     /** (Re)arma los botones de la barra a partir de las tools registradas en el ToolsManager. */
     refreshToolButtons() {
+        this._clearToolbarButtons();
+        this._buildToolbarButtons();
+        this._highlightActive(this.appManager.toolsManager.activeTool);
+    }
+
+    _clearToolbarButtons() {
         this.toolbar.replaceChildren();
         this.toolButtons.clear();
+    }
 
+    _buildToolbarButtons() {
+        this._appendRegisteredToolButtons();
+        this._appendMenuButton();
+    }
+
+    _appendRegisteredToolButtons() {
         const toolsManager = this.appManager.toolsManager;
         for (const tool of toolsManager.tools) {
-            const btn = this._el('button', '', tool.label ?? tool.constructor.name);
-            btn.addEventListener('click', () => {
-                toolsManager.setActive(tool);
-                this._highlightActive(tool);
-            });
-            this.toolButtons.set(tool, btn);
-            this.toolbar.appendChild(btn);
+            this._appendToolButton(tool, toolsManager);
         }
+    }
 
+    _appendToolButton(tool, toolsManager) {
+        const btn = this._createToolButton(tool, toolsManager);
+        this.toolButtons.set(tool, btn);
+        this.toolbar.appendChild(btn);
+    }
+
+    _createToolButton(tool, toolsManager) {
+        const btn = this._el('button', '', tool.label ?? tool.constructor.name);
+        btn.addEventListener('click', () => this._activateTool(tool, toolsManager));
+        return btn;
+    }
+
+    _activateTool(tool, toolsManager) {
+        toolsManager.setActive(tool);
+        this._highlightActive(tool);
+    }
+
+    _appendMenuButton() {
         const menuBtn = this._el('button', 'ui-menu-button', 'Menú');
         menuBtn.addEventListener('click', () => this._onMenuButton());
         this.toolbar.appendChild(menuBtn);
-
-        this._highlightActive(toolsManager.activeTool);
     }
 
     _highlightActive(activeTool) {

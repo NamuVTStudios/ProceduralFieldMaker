@@ -1,14 +1,29 @@
 class App {
     constructor() {
         this._checkLibraries();
+        this._initializeApplication();
+    }
+
+    _initializeApplication() {
         this.appManager = new AppManager();
+        this._initializeWorkspace();
+        this._activateApplication();
+    }
+
+    _activateApplication() {
+        this._initializeInterface();
+        this._bindGlobalEvents();
+        this._startLoop();
+    }
+
+    _initializeWorkspace() {
         this._setupCanvas();
         this._registerDefaultTools();
         this._registerDefaultWindows();
-        // La UI se crea después de registrar las tools: arma el menú 2D/3D y la barra de herramientas
+    }
+
+    _initializeInterface() {
         this.appManager.ui = new UI(this.appManager);
-        this._bindGlobalEvents();
-        this._startLoop();
     }
 
     _setupCanvas() {

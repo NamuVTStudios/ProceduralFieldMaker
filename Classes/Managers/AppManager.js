@@ -6,17 +6,25 @@ const DEFAULT_PROJECT_SETTINGS = {
 
 class AppManager {
     constructor() {
+        this._initializeProjectState();
+        this._initializeManagers();
+        this.ui = null; // la crea App una vez registradas las tools
+    }
+
+    _initializeProjectState() {
         this.objects = [];
-        this.mode = null;       // '2d' | '3d' | null (null = todavía no hay lienzo, se ve el menú)
+        this.mode = null;
         this.mapData = null;
         this.container = null;
         this.paused = false;
         this.isMobileLayout = false;
-        this.renderer = null;   // Renderer2D or Renderer3D
+        this.renderer = null;
+    }
+
+    _initializeManagers() {
         this.destructionEngine = new TerrainModificationEngine(this);
         this.toolsManager = new ToolsManager(this);
         this.windowsManager = new WindowsManager(this);
-        this.ui = null;         // la crea App una vez registradas las tools
     }
 
     setContainer(container) {
@@ -67,14 +75,32 @@ class AppManager {
      * genera el MapData vacío y arranca el renderer correspondiente.
      */
     newProject(mode) {
-        const settings = DEFAULT_PROJECT_SETTINGS[mode];
-        if (!settings) throw new Error(`Modo desconocido: ${mode}`);
+        this._assertSupportedMode(mode);
+        this._replaceProject(mode);
+    }
 
+    _assertSupportedMode(mode) {
+        if (!DEFAULT_PROJECT_SETTINGS[mode]) throw new Error(`Modo desconocido: ${mode}`);
+    }
+
+    _replaceProject(mode) {
         this.closeProject();
-
-        const config = { ...settings, seed: createRandomSeed(), materials: createDefaultMaterials() };
-        this.mapData = mode === '2d' ? createMapData2D(config) : createMapData3D(config);
+        this.mapData = this._createProjectMapData(mode);
         this.setMode(mode);
+    }
+
+    _createProjectMapData(mode) {
+        const settings = DEFAULT_PROJECT_SETTINGS[mode];
+        const config = this._createProjectConfig(settings);
+        return this._createMapData(mode, config);
+    }
+
+    _createProjectConfig(settings) {
+        return { ...settings, seed: createRandomSeed(), materials: createDefaultMaterials() };
+    }
+
+    _createMapData(mode, config) {
+        return mode === '2d' ? createMapData2D(config) : createMapData3D(config);
     }
 
     /** Cierra el lienzo actual: destruye el renderer y descarta el MapData. */
@@ -87,10 +113,16 @@ class AppManager {
 
     setMode(mode) {
         this.mode = mode;
-        if (this.renderer) this.unregister(this.renderer);
+        this._replaceRenderer(mode);
+    }
 
-        this.renderer = mode === '2d'
-            ? this.register(new Renderer2D(this))   // usa PIXI internamente
-            : this.register(new Renderer3D(this));  // usa BABYLON internamente
+    _replaceRenderer(mode) {
+        if (this.renderer) this.unregister(this.renderer);
+        this.renderer = this._createRenderer(mode);
+    }
+
+    _createRenderer(mode) {
+        const renderer = mode === '2d' ? new Renderer2D(this) : new Renderer3D(this);
+        return this.register(renderer);
     }
 }

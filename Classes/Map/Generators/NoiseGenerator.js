@@ -37,17 +37,22 @@ class NoiseGenerator {
    * @param {string|number} seed Puede ser la cadena visual (ej: "MONTANA-7X2") o el hash directo.
    */
   constructor(seed = "DEFAULT_SEED") {
+    this._setSeed(seed);
+    this._initializeNoiseTables();
+  }
+
+  _setSeed(seed) {
     this.seedString = typeof seed === "string" ? seed : String(seed);
     this.seedHash = typeof seed === "number" ? (seed >>> 0) : hashSeedToInt(this.seedString);
+  }
 
-    // Inicializar tabla de permutaciones para el ruido
+  _initializeNoiseTables() {
     this.perm = new Uint8Array(512);
     this.grad3 = [
       [1, 1, 0], [-1, 1, 0], [1, -1, 0], [-1, -1, 0],
       [1, 0, 1], [-1, 0, 1], [1, 0, -1], [-1, 0, -1],
       [0, 1, 1], [0, -1, 1], [0, 1, -1], [0, -1, -1]
     ];
-
     this._initPermutations();
   }
 
@@ -56,23 +61,34 @@ class NoiseGenerator {
    * @private
    */
   _initPermutations() {
-    const rng = createSeededRandom(this.seedHash);
-    const p = new Uint8Array(256);
-    for (let i = 0; i < 256; i++) {
-      p[i] = i;
-    }
+    const permutation = this._createInitialPermutation();
+    this._shufflePermutation(permutation);
+    this._copyPermutationTable(permutation);
+  }
 
-    // Barajado Fisher-Yates determinista
+  _createInitialPermutation() {
+    const permutation = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) permutation[i] = i;
+    return permutation;
+  }
+
+  _shufflePermutation(permutation) {
+    const random = createSeededRandom(this.seedHash);
     for (let i = 255; i > 0; i--) {
-      const j = Math.floor(rng() * (i + 1));
-      const temp = p[i];
-      p[i] = p[j];
-      p[j] = temp;
+      const swapIndex = Math.floor(random() * (i + 1));
+      this._swapPermutationValues(permutation, i, swapIndex);
     }
+  }
 
-    // Duplicar para evitar desbordamiento modular (wrapping)
+  _swapPermutationValues(permutation, firstIndex, secondIndex) {
+    const value = permutation[firstIndex];
+    permutation[firstIndex] = permutation[secondIndex];
+    permutation[secondIndex] = value;
+  }
+
+  _copyPermutationTable(permutation) {
     for (let i = 0; i < 512; i++) {
-      this.perm[i] = p[i & 255];
+      this.perm[i] = permutation[i & 255];
     }
   }
 

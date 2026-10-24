@@ -49,11 +49,20 @@ function setVoxel3D(mapData3D, x, y, z, materialId) {
  */
 function applyHeightmapToMapData3D(mapData3D, heightmap, solidMaterialId) {
   for (let z = 0; z < mapData3D.sizeZ; z++) {
-    for (let x = 0; x < mapData3D.sizeX; x++) {
-      const columnHeight = heightmap[z * mapData3D.sizeX + x];
-      for (let y = 0; y < Math.min(columnHeight, mapData3D.sizeY); y++) {
-        setVoxel3D(mapData3D, x, y, z, solidMaterialId);
-      }
-    }
+    _applyHeightmapRow(mapData3D, heightmap, solidMaterialId, z);
+  }
+}
+
+function _applyHeightmapRow(mapData3D, heightmap, solidMaterialId, z) {
+  for (let x = 0; x < mapData3D.sizeX; x++) {
+    const columnHeight = heightmap[z * mapData3D.sizeX + x];
+    _fillHeightmapColumn(mapData3D, solidMaterialId, x, z, columnHeight);
+  }
+}
+
+function _fillHeightmapColumn(mapData3D, solidMaterialId, x, z, columnHeight) {
+  const cappedHeight = Math.min(columnHeight, mapData3D.sizeY);
+  for (let y = 0; y < cappedHeight; y++) {
+    setVoxel3D(mapData3D, x, y, z, solidMaterialId);
   }
 }

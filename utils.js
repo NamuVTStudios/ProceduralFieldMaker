@@ -30,11 +30,15 @@ function clampValue(value, min, max) {
 /** Dispara la descarga de un Blob en el navegador (usado por los exportadores). */
 function downloadBlob(blob, filename) {
     const url = URL.createObjectURL(blob);
+    triggerBlobDownload(url, filename);
+    URL.revokeObjectURL(url);
+}
+
+function triggerBlobDownload(url, filename) {
     const link = document.createElement('a');
     link.href = url;
     link.download = filename;
     link.click();
-    URL.revokeObjectURL(url);
 }
 
 /** Seed alfanumérica aleatoria (ej. "PFM-7X2K9Q"); es la que ve y podrá editar el usuario. */
