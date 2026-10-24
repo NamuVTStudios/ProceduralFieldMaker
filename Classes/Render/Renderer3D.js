@@ -1,88 +1,228 @@
 /**
- * Renderer3D.js
- * Renderizador 3D basado en Babylon.js con meshing de vóxels por Chunks y Face-Culling.
- * Hereda de AppObject y responde al ciclo de vida del AppManager.
- */
+ Renderer3D.js
+ Renderizador Babylon.js con meshing de vóxels por chunks y Face-Culling.
+ El ciclo de render lo controla AppManager para mantener un único loop.
+ **/
+const RENDERER_3D_CHUNK_FACES = [
+  { dir: [1, 0, 0], norm: [1, 0, 0], vertices: [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]] },
+  { dir: [-1, 0, 0], norm: [-1, 0, 0], vertices: [[0, 0, 1], [0, 1, 1], [0, 1, 0], [0, 0, 0]] },
+  { dir: [0, 1, 0], norm: [0, 1, 0], vertices: [[0, 1, 0], [0, 1, 1], [1, 1, 1], [1, 1, 0]] },
+  { dir: [0, -1, 0], norm: [0, -1, 0], vertices: [[0, 0, 1], [0, 0, 0], [1, 0, 0], [1, 0, 1]] },
+  { dir: [0, 0, 1], norm: [0, 0, 1], vertices: [[1, 0, 1], [1, 1, 1], [0, 1, 1], [0, 0, 1]] },
+  { dir: [0, 0, -1], norm: [0, 0, -1], vertices: [[0, 0, 0], [0, 1, 0], [1, 1, 0], [1, 0, 0]] },
+];
+
 class Renderer3D extends AppObject {
   constructor(appManager) {
     super(appManager);
-
-    // Componentes principales de Babylon.js
+    this.canvas = null;
     this.engine = null;
     this.scene = null;
     this.camera = null;
-    this.canvas = null;
-
-    // Mapa de mallas activas por Chunk (clave: "cx,cy,cz", valor: BABYLON.Mesh)
     this.chunks = new Map();
 
     // Material compartido con soporte para colores por vértice
     this.voxelMaterial = null;
-
-    this._onResize = this._onResize.bind(this);
+    this.boundsMeshes = [];
   }
 
-  /**
-   * Inicialización del entorno Babylon.js.
-   */
-  async onInit() {
-    // 1. Crear el elemento Canvas en el DOM
+  onInit() {
+    this._initializeRenderingEnvironment();
+    this._initializeSceneResources();
+    this._loadCurrentMap();
+  }
+
+  _initializeRenderingEnvironment() {
+    this._createCanvas();
+    this._createEngine();
+    this._createScene();
+  }
+
+  _createCanvas() {
     this.canvas = document.createElement('canvas');
-    this.canvas.id = 'renderCanvas3D';
-    this.canvas.style.width = '100%';
-    this.canvas.style.height = '100%';
-    this.canvas.style.display = 'block';
-    this.canvas.style.touchAction = 'none';
+    Object.assign(this.canvas.style, {
+      width: '100vw',
+      height: '100dvh',
+      display: 'block',
+      touchAction: 'none',
+    });
     document.body.appendChild(this.canvas);
-
-    // 2. Inicializar Engine y Escena
-    this.engine = new BABYLON.Engine(this.canvas, true);
-    this.scene = new BABYLON.Scene(this.engine);
-    this.scene.clearColor = new BABYLON.Color4(0.1, 0.1, 0.1, 1.0);
-
-    // 3. Cámara en perspectiva básica (configurada hacia el centro del espacio)
-    this.camera = new BABYLON.FreeCamera(
-      'defaultCam',
-      new BABYLON.Vector3(30, 40, -50),
-      this.scene
-    );
-    this.camera.setTarget(new BABYLON.Vector3(16, 10, 16));
-
-    // 4. Iluminación hemisférica y direccional
-    const hemiLight = new BABYLON.HemisphericLight(
-      'hemiLight',
-      new BABYLON.Vector3(0, 1, 0),
-      this.scene
-    );
-    hemiLight.intensity = 0.6;
-
-    const dirLight = new BABYLON.DirectionalLight(
-      'dirLight',
-      new BABYLON.Vector3(-1, -2, -1),
-      this.scene
-    );
-    dirLight.position = new BABYLON.Vector3(50, 80, 50);
-    dirLight.intensity = 0.7;
-
-    // 5. Material estándar con colores por vértice activados
-    this.voxelMaterial = new BABYLON.StandardMaterial('voxelMat', this.scene);
-    this.voxelMaterial.specularColor = new BABYLON.Color3(0.1, 0.1, 0.1);
+  }
 
     window.addEventListener('resize', this._onResize);
+  _createEngine() {
+    this.engine = new BABYLON.Engine(this.canvas, true);
+    this.engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, 2));
+  }
 
-    // 6. Construir geometría si ya existe un mapa instanciado
-    if (this.appManager.mapData) {
-      this.buildAllChunks(this.appManager.mapData);
+  _createScene() {
+    this.scene = new BABYLON.Scene(this.engine);
+    this.scene.useRightHandedSystem = true;
+    this.scene.clearColor = new BABYLON.Color4(0x1a / 255, 0x1a / 255, 0x1a / 255, 1);
+  }
+
+  _initializeSceneResources() {
+    this._createCamera();
+    this._createLighting();
+    this._createVoxelMaterial();
+  }
+
+  _createCamera() {
+    this.camera = new BABYLON.ArcRotateCamera(
+      'camera3D', 0, 0, 1, BABYLON.Vector3.Zero(), this.scene
+    );
+    this.camera.setPosition(new BABYLON.Vector3(30, 40, 50));
+    this.camera.setTarget(BABYLON.Vector3.Zero());
+    this.camera.fov = 60 * Math.PI / 180;
+    this.camera.minZ = 0.1;
+    this.camera.maxZ = 1000;
+    this.camera.lowerRadiusLimit = 2;
+    this.camera.wheelPrecision = 5;
+    this.camera.attachControl(true);
+  }
+
+  _createLighting() {
+    this._createAmbientLight();
+    this._createDirectionalLight();
+  }
+
+  _createAmbientLight() {
+    const light = new BABYLON.HemisphericLight('ambientLight', new BABYLON.Vector3(0, 1, 0), this.scene);
+    light.intensity = 0.6;
+    light.groundColor = light.diffuse.clone();
+  }
+
+  _createDirectionalLight() {
+    const direction = new BABYLON.Vector3(-50, -80, -40).normalize();
+    const light = new BABYLON.DirectionalLight('dirLight', direction, this.scene);
+    light.intensity = 0.8;
+  }
+
+  _createVoxelMaterial() {
+    this.voxelMaterial = new BABYLON.StandardMaterial('voxelMaterial', this.scene);
+    this.voxelMaterial.specularColor = BABYLON.Color3.Black();
+  }
+
+  _loadCurrentMap() {
+    if (!this.appManager.mapData) return;
+    this.loadMap(this.appManager.mapData);
+  }
+
+  /** Muestra los límites, encuadra la cámara y construye los chunks del mapa. */
+  loadMap(mapData3D) {
+    this._buildWorkspaceBounds(mapData3D);
+    this._frameCamera(mapData3D);
+    this.buildAllChunks(mapData3D);
+  }
+
+  _buildWorkspaceBounds(mapData3D) {
+    this._disposeBounds();
+    this.boundsMeshes = [
+      this._createWorkspaceBox(mapData3D),
+      this._createWorkspaceGrid(mapData3D),
+    ];
+    this._markBoundsNonPickable();
+  }
+
+  _createWorkspaceBox(mapData3D) {
+    const { sizeX: x, sizeY: y, sizeZ: z } = mapData3D;
+    const vector = (px, py, pz) => new BABYLON.Vector3(px, py, pz);
+    const edges = [
+      [vector(0, 0, 0), vector(x, 0, 0)],
+      [vector(x, 0, 0), vector(x, 0, z)],
+      [vector(x, 0, z), vector(0, 0, z)],
+      [vector(0, 0, z), vector(0, 0, 0)],
+      [vector(0, y, 0), vector(x, y, 0)],
+      [vector(x, y, 0), vector(x, y, z)],
+      [vector(x, y, z), vector(0, y, z)],
+      [vector(0, y, z), vector(0, y, 0)],
+      [vector(0, 0, 0), vector(0, y, 0)],
+      [vector(x, 0, 0), vector(x, y, 0)],
+      [vector(x, 0, z), vector(x, y, z)],
+      [vector(0, 0, z), vector(0, y, z)],
+    ];
+    const box = BABYLON.MeshBuilder.CreateLineSystem('workspaceBox', { lines: edges }, this.scene);
+    box.color = new BABYLON.Color3(0.6, 0.6, 0.6);
+    return box;
+  }
+
+  _createWorkspaceGrid(mapData3D) {
+    const lines = this._createWorkspaceGridLines(mapData3D);
+    return this._createWorkspaceGridMesh(lines);
+  }
+
+  _createWorkspaceGridLines(mapData3D) {
+    const step = mapData3D.chunkSize || 16;
+    const lines = [];
+    this._appendGridLinesAlongX(lines, mapData3D, step);
+    this._appendGridLinesAlongZ(lines, mapData3D, step);
+    return lines;
+  }
+
+  _createWorkspaceGridMesh(lines) {
+    const grid = BABYLON.MeshBuilder.CreateLineSystem('workspaceGrid', { lines }, this.scene);
+    grid.color = new BABYLON.Color3(0.32, 0.32, 0.32);
+    return grid;
+  }
+
+  _appendGridLinesAlongX(lines, mapData3D, step) {
+    const vector = (x, y, z) => new BABYLON.Vector3(x, y, z);
+    for (let x = 0; x <= mapData3D.sizeX; x += step) {
+      lines.push([vector(x, 0, 0), vector(x, 0, mapData3D.sizeZ)]);
     }
   }
 
-  /**
-   * Recorre el mapa volumétrico y genera las mallas para cada Chunk.
-   * @param {object} mapData3D
-   */
+  _appendGridLinesAlongZ(lines, mapData3D, step) {
+    const vector = (x, y, z) => new BABYLON.Vector3(x, y, z);
+    for (let z = 0; z <= mapData3D.sizeZ; z += step) {
+      lines.push([vector(0, 0, z), vector(mapData3D.sizeX, 0, z)]);
+    }
+  }
+
+  _markBoundsNonPickable() {
+    for (const mesh of this.boundsMeshes) mesh.isPickable = false;
+  }
+
+  _disposeBounds() {
+    for (const mesh of this.boundsMeshes) mesh.dispose();
+    this.boundsMeshes = [];
+  }
+
+  _frameCamera(mapData3D) {
+    const frame = this._getCameraFrame(mapData3D);
+    this._positionCameraForFrame(frame);
+    this.camera.upperRadiusLimit = frame.size * 5;
+  }
+
+  _getCameraFrame(mapData3D) {
+    return {
+      center: this._getMapCenter(mapData3D),
+      size: Math.max(mapData3D.sizeX, mapData3D.sizeY, mapData3D.sizeZ),
+    };
+  }
+
+  _positionCameraForFrame({ center, size }) {
+    this.camera.setPosition(new BABYLON.Vector3(
+      center.x + size * 0.9, center.y + size * 0.8, center.z + size * 1.1
+    ));
+    this.camera.setTarget(new BABYLON.Vector3(center.x, center.y, center.z));
+  }
+
+  _getMapCenter(mapData3D) {
+    return {
+      x: mapData3D.sizeX / 2,
+      y: mapData3D.sizeY / 2,
+      z: mapData3D.sizeZ / 2,
+    };
+  }
+
   buildAllChunks(mapData3D) {
     this.clearAllChunks();
+    const dimensions = this._getChunkDimensions(mapData3D);
+    this._buildChunksAlongZ(mapData3D, dimensions);
+  }
 
+  _getChunkDimensions(mapData3D) {
     const chunkSize = mapData3D.chunkSize || 16;
     const chunksX = Math.ceil(mapData3D.sizeX / chunkSize);
     const chunksY = Math.ceil(mapData3D.sizeY / chunkSize);
@@ -94,163 +234,237 @@ class Renderer3D extends AppObject {
           this.buildChunk(mapData3D, cx, cy, cz);
         }
       }
+    return {
+      chunkSize,
+      x: Math.ceil(mapData3D.sizeX / chunkSize),
+      y: Math.ceil(mapData3D.sizeY / chunkSize),
+      z: Math.ceil(mapData3D.sizeZ / chunkSize),
+    };
+  }
+
+  _buildChunksAlongZ(mapData3D, dimensions) {
+    for (let cz = 0; cz < dimensions.z; cz++) {
+      this._buildChunksAlongY(mapData3D, dimensions, cz);
     }
   }
 
-  /**
-   * Construye un chunk individual aplicando Face-Culling y asignando colores por vértice.
-   */
+  _buildChunksAlongY(mapData3D, dimensions, cz) {
+    for (let cy = 0; cy < dimensions.y; cy++) {
+      this._buildChunksAlongX(mapData3D, dimensions, cy, cz);
+    }
+  }
+
+  _buildChunksAlongX(mapData3D, dimensions, cy, cz) {
+    for (let cx = 0; cx < dimensions.x; cx++) {
+      this.buildChunk(mapData3D, cx, cy, cz);
+    }
+  }
+
+  /** Construye o reemplaza la geometría de un chunk específico. */
   buildChunk(mapData3D, cx, cy, cz) {
+    const chunk = this._prepareChunk(mapData3D, cx, cy, cz);
+    this._populateChunk(mapData3D, chunk);
+    this._renderChunk(chunk);
+  }
+
+  _prepareChunk(mapData3D, cx, cy, cz) {
+    const key = this._getChunkKey(cx, cy, cz);
+    this._disposeChunk(key);
+    return this._createChunkContext(mapData3D, cx, cy, cz, key);
+  }
+
+  _getChunkKey(cx, cy, cz) {
+    return `${cx},${cy},${cz}`;
+  }
+
+  _createChunkContext(mapData3D, cx, cy, cz, key) {
+    const bounds = this._getChunkBounds(mapData3D, cx, cy, cz);
+    return {
+      key,
+      ...bounds,
+      ...this._createGeometryBuffers(),
+      colorMap: this._createMaterialColorMap(mapData3D.materials),
+      faces: RENDERER_3D_CHUNK_FACES,
+    };
+  }
+
+  _getChunkBounds(mapData3D, cx, cy, cz) {
     const chunkSize = mapData3D.chunkSize || 16;
     const startX = cx * chunkSize;
     const startY = cy * chunkSize;
     const startZ = cz * chunkSize;
+    return {
+      startX,
+      startY,
+      startZ,
+      endX: Math.min(startX + chunkSize, mapData3D.sizeX),
+      endY: Math.min(startY + chunkSize, mapData3D.sizeY),
+      endZ: Math.min(startZ + chunkSize, mapData3D.sizeZ),
+    };
+  }
 
     const endX = Math.min(startX + chunkSize, mapData3D.sizeX);
     const endY = Math.min(startY + chunkSize, mapData3D.sizeY);
     const endZ = Math.min(startZ + chunkSize, mapData3D.sizeZ);
-
-    const positions = [];
-    const normals = [];
-    const colors = [];
-    const indices = [];
-
-    // Mapeo rápido de colores por material (r, g, b, a normalizados 0 a 1)
-    const colorMap = new Map();
-    for (const mat of mapData3D.materials) {
-      const hex = mat.color.replace('#', '');
-      const r = parseInt(hex.substring(0, 2), 16) / 255;
-      const g = parseInt(hex.substring(2, 4), 16) / 255;
-      const b = parseInt(hex.substring(4, 6), 16) / 255;
-      colorMap.set(mat.id, [r, g, b, 1.0]);
-    }
-
-    // Configuración de las 6 caras con normales y vértices locales
-    const faces = [
-      // Derecha (+X)
-      { dir: [1, 0, 0], norm: [1, 0, 0], v: [[1,0,0], [1,1,0], [1,1,1], [1,0,1]] },
-      // Izquierda (-X)
-      { dir: [-1, 0, 0], norm: [-1, 0, 0], v: [[0,0,1], [0,1,1], [0,1,0], [0,0,0]] },
-      // Arriba (+Y)
-      { dir: [0, 1, 0], norm: [0, 1, 0], v: [[0,1,0], [0,1,1], [1,1,1], [1,1,0]] },
-      // Abajo (-Y)
-      { dir: [0, -1, 0], norm: [0, -1, 0], v: [[0,0,1], [0,0,0], [1,0,0], [1,0,1]] },
-      // Frente (+Z)
-      { dir: [0, 0, 1], norm: [0, 0, 1], v: [[1,0,1], [1,1,1], [0,1,1], [0,0,1]] },
-      // Fondo (-Z)
-      { dir: [0, 0, -1], norm: [0, 0, -1], v: [[0,0,0], [0,1,0], [1,1,0], [1,0,0]] }
-    ];
-
-    let vertIndexTracker = 0;
-
-    for (let y = startY; y < endY; y++) {
-      for (let z = startZ; z < endZ; z++) {
-        for (let x = startX; x < endX; x++) {
-          const materialId = getVoxel3D(mapData3D, x, y, z);
-          if (materialId === 0) continue; // Aire
-
-          const col = colorMap.get(materialId) || [1.0, 1.0, 1.0, 1.0];
-
-          // Face-Culling: evaluar vecinos
-          for (const face of faces) {
-            const nx = x + face.dir[0];
-            const ny = y + face.dir[1];
-            const nz = z + face.dir[2];
-
-            const neighbor = getVoxel3D(mapData3D, nx, ny, nz);
-
-            // Si el vecino es aire (0), generamos la cara poligonal
-            if (neighbor === 0) {
-              for (let i = 0; i < 4; i++) {
-                const vert = face.v[i];
-                positions.push(x + vert[0], y + vert[1], z + vert[2]);
-                normals.push(...face.norm);
-                colors.push(...col);
-              }
-
-              // Triangulación de la cara (0, 1, 2) y (0, 2, 3)
-              indices.push(
-                vertIndexTracker,
-                vertIndexTracker + 1,
-                vertIndexTracker + 2,
-                vertIndexTracker,
-                vertIndexTracker + 2,
-                vertIndexTracker + 3
-              );
-              vertIndexTracker += 4;
-            }
-          }
-        }
-      }
-    }
-
-    if (positions.length === 0) return;
-
-    // Crear la malla del Chunk mediante VertexData en Babylon.js
-    const chunkMesh = new BABYLON.Mesh(`chunk_${cx}_${cy}_${cz}`, this.scene);
-    const vertexData = new BABYLON.VertexData();
-
-    vertexData.positions = positions;
-    vertexData.normals = normals;
-    vertexData.colors = colors;
-    vertexData.indices = indices;
-
-    vertexData.applyToMesh(chunkMesh);
-    chunkMesh.material = this.voxelMaterial;
-
-    const chunkKey = `${cx},${cy},${cz}`;
-    this.chunks.set(chunkKey, chunkMesh);
+  _createGeometryBuffers() {
+    return { positions: [], normals: [], colors: [], indices: [] };
   }
 
-  /**
-   * Permite reconstruir un único Chunk tras una modificación o destrucción local.
-   */
-  rebuildChunk(mapData3D, cx, cy, cz) {
-    const chunkKey = `${cx},${cy},${cz}`;
-    const existingMesh = this.chunks.get(chunkKey);
-    if (existingMesh) {
-      existingMesh.dispose();
-      this.chunks.delete(chunkKey);
+  _createMaterialColorMap(materials) {
+    const colorMap = new Map();
+    for (const material of materials) {
+      colorMap.set(material.id, BABYLON.Color3.FromHexString(material.color));
     }
-    this.buildChunk(mapData3D, cx, cy, cz);
+    return colorMap;
+  }
+
+  _populateChunk(mapData3D, chunk) {
+    for (let y = chunk.startY; y < chunk.endY; y++) {
+      this._populateChunkLayer(mapData3D, chunk, y);
+    }
+  }
+
+  _populateChunkLayer(mapData3D, chunk, y) {
+    for (let z = chunk.startZ; z < chunk.endZ; z++) {
+      this._populateChunkRow(mapData3D, chunk, y, z);
+    }
+  }
+
+  _populateChunkRow(mapData3D, chunk, y, z) {
+    for (let x = chunk.startX; x < chunk.endX; x++) {
+      this._populateVoxel(mapData3D, chunk, x, y, z);
+    }
+  }
+
+  _populateVoxel(mapData3D, chunk, x, y, z) {
+    const materialId = getVoxel3D(mapData3D, x, y, z);
+    if (materialId === AIR_MATERIAL_ID) return;
+    this._appendVoxelFaces(mapData3D, chunk, x, y, z, this._getVoxelColor(chunk, materialId));
+  }
+
+  _getVoxelColor(chunk, materialId) {
+    return chunk.colorMap.get(materialId) || new BABYLON.Color3(1, 1, 1);
+  }
+
+  _appendVoxelFaces(mapData3D, chunk, x, y, z, blockColor) {
+    for (const face of chunk.faces) {
+      this._appendVisibleFace(mapData3D, chunk, face, x, y, z, blockColor);
+    }
+  }
+
+  _appendVisibleFace(mapData3D, chunk, face, x, y, z, blockColor) {
+    if (!this._isFaceVisible(mapData3D, face, x, y, z)) return;
+    this._appendFaceGeometry(chunk, face, x, y, z, blockColor);
+  }
+
+  _isFaceVisible(mapData3D, face, x, y, z) {
+    const neighbor = getVoxel3D(
+      mapData3D,
+      x + face.dir[0],
+      y + face.dir[1],
+      z + face.dir[2]
+    );
+    return neighbor === AIR_MATERIAL_ID;
+  }
+
+  _appendFaceGeometry(chunk, face, x, y, z, blockColor) {
+    const baseVertex = chunk.positions.length / 3;
+    this._appendFaceVertices(chunk, face, x, y, z, blockColor);
+    this._appendFaceIndices(chunk, baseVertex);
+  }
+
+  _appendFaceIndices(chunk, baseVertex) {
+    chunk.indices.push(baseVertex, baseVertex + 1, baseVertex + 2, baseVertex, baseVertex + 2, baseVertex + 3);
+  }
+
+  _appendFaceVertices(chunk, face, x, y, z, color) {
+    for (const vertex of face.vertices) {
+      chunk.positions.push(x + vertex[0], y + vertex[1], z + vertex[2]);
+      chunk.normals.push(face.norm[0], face.norm[1], face.norm[2]);
+      chunk.colors.push(color.r, color.g, color.b, 1);
+    }
+  }
+
+  _renderChunk(chunk) {
+    if (chunk.positions.length === 0) return;
+    const mesh = this._createChunkMesh(chunk);
+    this._registerChunkMesh(chunk.key, mesh);
+  }
+
+  _registerChunkMesh(chunkKey, mesh) {
+    mesh.material = this.voxelMaterial;
+    mesh.isPickable = false;
+    this.chunks.set(chunkKey, mesh);
+  }
+
+  _createChunkMesh(chunk) {
+    const mesh = new BABYLON.Mesh(`chunk_${chunk.key}`, this.scene);
+    this._applyChunkGeometry(mesh, chunk);
+    return mesh;
+  }
+
+  _applyChunkGeometry(mesh, chunk) {
+    const vertexData = new BABYLON.VertexData();
+    vertexData.positions = chunk.positions;
+    vertexData.normals = chunk.normals;
+    vertexData.colors = chunk.colors;
+    vertexData.indices = chunk.indices;
+    vertexData.applyToMesh(mesh);
+  }
+
+  _disposeChunk(chunkKey) {
+    const mesh = this.chunks.get(chunkKey);
+    if (!mesh) return;
+    mesh.dispose();
+    this.chunks.delete(chunkKey);
   }
 
   clearAllChunks() {
-    for (const [, mesh] of this.chunks) {
-      mesh.dispose();
-    }
+    for (const mesh of this.chunks.values()) mesh.dispose();
     this.chunks.clear();
   }
 
-  _onResize() {
-    if (this.engine) {
-      this.engine.resize();
-    }
+  onResize() {
+    if (this.engine) this.engine.resize();
   }
 
-  /**
-   * Bucle de ejecución por cuadro.
-   */
-  onUpdate(dt) {
-    if (this.scene) {
-      this.scene.render();
-    }
+  onUpdate() {
+    if (this.scene && this.scene.activeCamera) this.scene.render();
   }
 
   onDestroy() {
-    window.removeEventListener('resize', this._onResize);
-    this.clearAllChunks();
-    if (this.scene) {
-      this.scene.dispose();
-      this.scene = null;
-    }
-    if (this.engine) {
-      this.engine.dispose();
-      this.engine = null;
-    }
-    if (this.canvas) {
-      this.canvas.remove();
-      this.canvas = null;
-    }
+    this._disposeWorld();
+    this._disposeRuntime();
+    this._resetReferences();
   }
+
+  _disposeWorld() {
+    this._disposeBounds();
+    this.clearAllChunks();
+  }
+
+  _disposeRuntime() {
+    this._disposeBabylonCore();
+    this._removeCanvas();
+  }
+
+  _disposeBabylonCore() {
+    if (this.voxelMaterial) this.voxelMaterial.dispose();
+    if (this.scene) this.scene.dispose();
+    if (this.engine) this.engine.dispose();
+  }
+
+  _removeCanvas() {
+    if (this.canvas) this.canvas.remove();
+  }
+
+  _resetReferences() {
+    this.chunks = new Map();
+    this.voxelMaterial = null;
+    this.scene = null;
+    this.engine = null;
+    this.canvas = null;
+    this.camera = null;
+  }
+} No newline at end of file
 }

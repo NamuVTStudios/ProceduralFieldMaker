@@ -6,7 +6,7 @@ Web app to create 2D and 3D procedural maps with destructible terrain — a devs
 
 ## 1. Folder Structure
 
-Structure based on the current project layout, extended with the subsystems defined in the TDD (map generation, rendering, physics, export) that don't exist as folders yet.
+Structure based on the current project layout, extended with the subsystems defined in the TDD (map generation, rendering, export) that don't exist as folders yet.
 
 ```
 ProceduralFieldMaker/
@@ -73,8 +73,8 @@ ProceduralFieldMaker/
 ```
 
 **Notes on the current structure:**
-- `Map/`, `Render/`, `Physics/` and `Export/` don't exist yet in the project — they're the natural home for the systems already defined in the TDD (generation, destruction, rendering, physics, exporters) once they're implemented.
-- `clases/` and `librerias/` are the only two folder names still in Spanish. Since the rest of the project (classes, methods, files) follows English naming, consider renaming them to `classes/` and `libraries/` for consistency — purely cosmetic, doesn't affect functionality, but keeps the codebase uniform for any future collaborator.
+- `Map/`, `Render/` and `Export/` hold the systems defined in the TDD (generation and modification, rendering, exporters).
+- The project has **no physics engine** (no Box2D / Cannon.js): see "Fuera de alcance" in the TDD.
 
 ---
 
@@ -104,7 +104,7 @@ This is the one concrete fix needed — the current files mix conventions (`appo
 **Exceptions (not classes, so not PascalCase):**
 - `utils.js` — stays lowercase; it's a bag of standalone functions, not a class.
 - `index.html`, `styles.css`, `README.md` — follow their own ecosystem conventions (lowercase for HTML/CSS entry files, uppercase for README by convention).
-- Library files under `librerias/` (`pixi.js`, `three.js`, etc.) — keep whatever casing the library itself ships with; don't rename third-party files.
+- Library files under `Libraries/` (`pixi.js`, `babylon.js`) — keep whatever casing the library itself ships with; don't rename third-party files.
 
 **Reminder:** since this project loads everything via global `<script>` tags (no bundler), renaming files means updating the corresponding `src` paths in `index.html` too.
 
@@ -147,7 +147,7 @@ const CHUNK_SIZE = 16;
 Prefix with `is`, `has`, or `can` so the name reads as a yes/no question.
 ```js
 let isMobile = false;
-let hasPhysics = true;
+let hasLayers = true;
 let canExport = false;
 ```
 
@@ -157,7 +157,7 @@ let canExport = false;
 - Methods that broadcast a change to the rest of the app: prefix `emit` — `emitLayoutChange`, `emitToolChanged`.
 
 ### 3.7 Utility functions (`utils.js`)
-**camelCase, verb-first, descriptive** — avoid short generic names that could collide with something from Pixi/Three/Box2D/Cannon (all loaded as globals).
+**camelCase, verb-first, descriptive** — avoid short generic names that could collide with something from Pixi/Babylon (both loaded as globals).
 ```js
 function createObjectFromTemplate(templateData, TargetClass, appManager) { }
 function clampValue(value, min, max) { }

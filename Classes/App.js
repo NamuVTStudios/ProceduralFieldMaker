@@ -1,13 +1,29 @@
 class App {
     constructor() {
         this._checkLibraries();
+        this._initializeApplication();
+    }
+
+    _initializeApplication() {
         this.appManager = new AppManager();
+        this._initializeWorkspace();
+        this._activateApplication();
+    }
+
+    _activateApplication() {
+        this._initializeInterface();
+        this._bindGlobalEvents();
+        this._startLoop();
+    }
+
+    _initializeWorkspace() {
         this._setupCanvas();
         this._registerDefaultTools();
         this._registerDefaultWindows();
-        this._bindGlobalEvents();
-        this.appManager.init(); // starts in default mode (e.g., '2d')
-        this._startLoop();
+    }
+
+    _initializeInterface() {
+        this.appManager.ui = new UI(this.appManager);
     }
 
     _setupCanvas() {
@@ -48,7 +64,7 @@ class App {
     }
 
     _checkLibraries() {
-        const required = { PIXI: window.PIXI, THREE: window.THREE, Box2D: window.Box2D, CANNON: window.CANNON };
+        const required = { PIXI: window.PIXI, BABYLON: window.BABYLON };
         const missing = Object.entries(required).filter(([, lib]) => !lib).map(([name]) => name);
         if (missing.length) {
             throw new Error(`Faltan librerías: ${missing.join(', ')} — revisá los <script> en el HTML`);
