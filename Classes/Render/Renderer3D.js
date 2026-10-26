@@ -467,4 +467,59 @@ class Renderer3D extends AppObject {
     this.camera = null;
   }
 } No newline at end of file
+
+// =========================================================================
+  // SOPORTE DE GIZMOS 3D INTERACTIVOS (S1-33)
+  // Manejo de herramientas de transformación (traslación, rotación, escala)
+  // =========================================================================
+
+  /**
+   * Inicializa o devuelve la instancia de GizmoManager para la escena de Babylon.
+   * Se crea solo cuando se necesita para no sobrecargar el render inicial.
+   */
+  getGizmoManager() {
+    if (!this.gizmoManager && this.scene) {
+      this.gizmoManager = new BABYLON.GizmoManager(this.scene);
+      this.gizmoManager.positionGizmoEnabled = true;
+      this.gizmoManager.rotationGizmoEnabled = false;
+      this.gizmoManager.scaleGizmoEnabled = false;
+      this.gizmoManager.usePointerToAttachGizmos = false; // Solo anclaje manual a primitivas
+    }
+    return this.gizmoManager;
+  }
+
+  /**
+   * Acopla las flechas del Gizmo a una malla (ej: previsualización de primitiva).
+   * @param {BABYLON.AbstractMesh} mesh Malla a transformar
+   * @param {'position'|'rotation'|'scale'} mode Modo de interacción
+   */
+  attachGizmo(mesh, mode = 'position') {
+    const gm = this.getGizmoManager();
+    if (!gm) return;
+
+    gm.positionGizmoEnabled = (mode === 'position');
+    gm.rotationGizmoEnabled = (mode === 'rotation');
+    gm.scaleGizmoEnabled = (mode === 'scale');
+
+    gm.attachToMesh(mesh);
+  }
+
+  /**
+   * Oculta y retira los gizmos activos de la escena.
+   */
+  detachGizmo() {
+    if (this.gizmoManager) {
+      this.gizmoManager.attachToMesh(null);
+    }
+  }
+
+  /**
+   * Limpieza de los gizmos al destruir la escena.
+   */
+  disposeGizmo() {
+    if (this.gizmoManager) {
+      this.gizmoManager.dispose();
+      this.gizmoManager = null;
+    }
+  }
 }
