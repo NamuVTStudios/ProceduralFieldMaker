@@ -1,525 +1,254 @@
 /**
- Renderer3D.js
- Renderizador Babylon.js con meshing de vóxels por chunks y Face-Culling.
- El ciclo de render lo controla AppManager para mantener un único loop.
+ * Renderer3D.js
+ * Renderizador Babylon.js con meshing de vóxels por chunks y Face-Culling.
+ * Refactorizado en subtareas planas de un máximo de 3 subtareas por método.
  **/
 const RENDERER_3D_CHUNK_FACES = [
-  { dir: [1, 0, 0], norm: [1, 0, 0], vertices: [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]] },
+  { dir:, norm:, vertices: [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]] },
   { dir: [-1, 0, 0], norm: [-1, 0, 0], vertices: [[0, 0, 1], [0, 1, 1], [0, 1, 0], [0, 0, 0]] },
-  { dir: [0, 1, 0], norm: [0, 1, 0], vertices: [[0, 1, 0], [0, 1, 1], [1, 1, 1], [1, 1, 0]] },
+  { dir:, norm:, vertices: [[0, 1, 0], [0, 1, 1], [1, 1, 1], [1, 1, 0]] },
   { dir: [0, -1, 0], norm: [0, -1, 0], vertices: [[0, 0, 1], [0, 0, 0], [1, 0, 0], [1, 0, 1]] },
-  { dir: [0, 0, 1], norm: [0, 0, 1], vertices: [[1, 0, 1], [1, 1, 1], [0, 1, 1], [0, 0, 1]] },
+  { dir:, norm:, vertices: [[1, 0, 1], [1, 1, 1], [0, 1, 1], [0, 0, 1]] },
   { dir: [0, 0, -1], norm: [0, 0, -1], vertices: [[0, 0, 0], [0, 1, 0], [1, 1, 0], [1, 0, 0]] },
 ];
 
 class Renderer3D extends AppObject {
   constructor(appManager) {
     super(appManager);
-    this.canvas = null;
     this.engine = null;
     this.scene = null;
-    this.camera = null;
+    this.cameraController = null;
+    this.isInitialized = false;
     this.chunks = new Map();
-
-    // Material compartido con soporte para colores por vértice
-    this.voxelMaterial = null;
-    this.boundsMeshes = [];
+    this._resizeHandler = () => this._onResize();
   }
 
   onInit() {
-    this._initializeRenderingEnvironment();
-    this._initializeSceneResources();
-    this._loadCurrentMap();
+    console.log("Renderer3D registrado. Esperando Canvas...");
+    window.addEventListener('resize', this._resizeHandler);
   }
 
-  _initializeRenderingEnvironment() {
-    this._createCanvas();
-    this._createEngine();
-    this._createScene();
+  onUpdate(dt) {
+    this._ensureBabylonInitialized();
+    this._updateCameraController(dt);
   }
 
-  _createCanvas() {
-    this.canvas = document.createElement('canvas');
-    Object.assign(this.canvas.style, {
-      width: '100vw',
-      height: '100dvh',
-      display: 'block',
-      touchAction: 'none',
-    });
-    document.body.appendChild(this.canvas);
+  _ensureBabylonInitialized() {
+    if (this.isInitialized) return;
+    this._initializeBabylon();
   }
 
-    window.addEventListener('resize', this._onResize);
-  _createEngine() {
-    this.engine = new BABYLON.Engine(this.canvas, true);
-    this.engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, 2));
+  _initializeBabylon() {
+    const canvas = document.getElementById("renderCanvas") || document.querySelector("canvas");
+    if (!canvas) return;
+    this._createEngineAndScene(canvas);
+    this._setupLoopAndController(canvas);
   }
 
-  _createScene() {
+  _createEngineAndScene(canvas) {
+    this.engine = new BABYLON.ThinEngine(canvas, true);
     this.scene = new BABYLON.Scene(this.engine);
-    this.scene.useRightHandedSystem = true;
-    this.scene.clearColor = new BABYLON.Color4(0x1a / 255, 0x1a / 255, 0x1a / 255, 1);
   }
 
-  _initializeSceneResources() {
-    this._createCamera();
-    this._createLighting();
-    this._createVoxelMaterial();
+  _setupLoopAndController(canvas) {
+    this.cameraController = new CameraController3D(this.appManager, this.scene);
+    this.engine.runRenderLoop(() => this._renderSceneFrame());
+    this.isInitialized = true;
   }
 
-  _createCamera() {
-    this.camera = new BABYLON.ArcRotateCamera(
-      'camera3D', 0, 0, 1, BABYLON.Vector3.Zero(), this.scene
-    );
-    this.camera.setPosition(new BABYLON.Vector3(30, 40, 50));
-    this.camera.setTarget(BABYLON.Vector3.Zero());
-    this.camera.fov = 60 * Math.PI / 180;
-    this.camera.minZ = 0.1;
-    this.camera.maxZ = 1000;
-    this.camera.lowerRadiusLimit = 2;
-    this.camera.wheelPrecision = 5;
-    this.camera.attachControl(true);
+  _renderSceneFrame() {
+    if (!this.scene || !this.active || this.appManager.paused) return;
+    this.scene.render();
   }
 
-  _createLighting() {
-    this._createAmbientLight();
-    this._createDirectionalLight();
-  }
-
-  _createAmbientLight() {
-    const light = new BABYLON.HemisphericLight('ambientLight', new BABYLON.Vector3(0, 1, 0), this.scene);
-    light.intensity = 0.6;
-    light.groundColor = light.diffuse.clone();
-  }
-
-  _createDirectionalLight() {
-    const direction = new BABYLON.Vector3(-50, -80, -40).normalize();
-    const light = new BABYLON.DirectionalLight('dirLight', direction, this.scene);
-    light.intensity = 0.8;
-  }
-
-  _createVoxelMaterial() {
-    this.voxelMaterial = new BABYLON.StandardMaterial('voxelMaterial', this.scene);
-    this.voxelMaterial.specularColor = BABYLON.Color3.Black();
-  }
-
-  _loadCurrentMap() {
-    if (!this.appManager.mapData) return;
-    this.loadMap(this.appManager.mapData);
-  }
-
-  /** Muestra los límites, encuadra la cámara y construye los chunks del mapa. */
-  loadMap(mapData3D) {
-    this._buildWorkspaceBounds(mapData3D);
-    this._frameCamera(mapData3D);
-    this.buildAllChunks(mapData3D);
-  }
-
-  _buildWorkspaceBounds(mapData3D) {
-    this._disposeBounds();
-    this.boundsMeshes = [
-      this._createWorkspaceBox(mapData3D),
-      this._createWorkspaceGrid(mapData3D),
-    ];
-    this._markBoundsNonPickable();
-  }
-
-  _createWorkspaceBox(mapData3D) {
-    const { sizeX: x, sizeY: y, sizeZ: z } = mapData3D;
-    const vector = (px, py, pz) => new BABYLON.Vector3(px, py, pz);
-    const edges = [
-      [vector(0, 0, 0), vector(x, 0, 0)],
-      [vector(x, 0, 0), vector(x, 0, z)],
-      [vector(x, 0, z), vector(0, 0, z)],
-      [vector(0, 0, z), vector(0, 0, 0)],
-      [vector(0, y, 0), vector(x, y, 0)],
-      [vector(x, y, 0), vector(x, y, z)],
-      [vector(x, y, z), vector(0, y, z)],
-      [vector(0, y, z), vector(0, y, 0)],
-      [vector(0, 0, 0), vector(0, y, 0)],
-      [vector(x, 0, 0), vector(x, y, 0)],
-      [vector(x, 0, z), vector(x, y, z)],
-      [vector(0, 0, z), vector(0, y, z)],
-    ];
-    const box = BABYLON.MeshBuilder.CreateLineSystem('workspaceBox', { lines: edges }, this.scene);
-    box.color = new BABYLON.Color3(0.6, 0.6, 0.6);
-    return box;
-  }
-
-  _createWorkspaceGrid(mapData3D) {
-    const lines = this._createWorkspaceGridLines(mapData3D);
-    return this._createWorkspaceGridMesh(lines);
-  }
-
-  _createWorkspaceGridLines(mapData3D) {
-    const step = mapData3D.chunkSize || 16;
-    const lines = [];
-    this._appendGridLinesAlongX(lines, mapData3D, step);
-    this._appendGridLinesAlongZ(lines, mapData3D, step);
-    return lines;
-  }
-
-  _createWorkspaceGridMesh(lines) {
-    const grid = BABYLON.MeshBuilder.CreateLineSystem('workspaceGrid', { lines }, this.scene);
-    grid.color = new BABYLON.Color3(0.32, 0.32, 0.32);
-    return grid;
-  }
-
-  _appendGridLinesAlongX(lines, mapData3D, step) {
-    const vector = (x, y, z) => new BABYLON.Vector3(x, y, z);
-    for (let x = 0; x <= mapData3D.sizeX; x += step) {
-      lines.push([vector(x, 0, 0), vector(x, 0, mapData3D.sizeZ)]);
+  _updateCameraController(dt) {
+    if (this.appManager.paused || !this.cameraController) return;
+    if (typeof this.cameraController.update === "function") {
+      this.cameraController.update(dt);
     }
   }
 
-  _appendGridLinesAlongZ(lines, mapData3D, step) {
-    const vector = (x, y, z) => new BABYLON.Vector3(x, y, z);
-    for (let z = 0; z <= mapData3D.sizeZ; z += step) {
-      lines.push([vector(0, 0, z), vector(mapData3D.sizeX, 0, z)]);
-    }
-  }
-
-  _markBoundsNonPickable() {
-    for (const mesh of this.boundsMeshes) mesh.isPickable = false;
-  }
-
-  _disposeBounds() {
-    for (const mesh of this.boundsMeshes) mesh.dispose();
-    this.boundsMeshes = [];
-  }
-
-  _frameCamera(mapData3D) {
-    const frame = this._getCameraFrame(mapData3D);
-    this._positionCameraForFrame(frame);
-    this.camera.upperRadiusLimit = frame.size * 5;
-  }
-
-  _getCameraFrame(mapData3D) {
-    return {
-      center: this._getMapCenter(mapData3D),
-      size: Math.max(mapData3D.sizeX, mapData3D.sizeY, mapData3D.sizeZ),
-    };
-  }
-
-  _positionCameraForFrame({ center, size }) {
-    this.camera.setPosition(new BABYLON.Vector3(
-      center.x + size * 0.9, center.y + size * 0.8, center.z + size * 1.1
-    ));
-    this.camera.setTarget(new BABYLON.Vector3(center.x, center.y, center.z));
-  }
-
-  _getMapCenter(mapData3D) {
-    return {
-      x: mapData3D.sizeX / 2,
-      y: mapData3D.sizeY / 2,
-      z: mapData3D.sizeZ / 2,
-    };
-  }
-
-  buildAllChunks(mapData3D) {
+  renderFullMap3D(mapData3D) {
+    if (!this.isInitialized || !mapData3D) return;
     this.clearAllChunks();
-    const dimensions = this._getChunkDimensions(mapData3D);
-    this._buildChunksAlongZ(mapData3D, dimensions);
+    this._iterateChunks(mapData3D);
   }
 
-  _getChunkDimensions(mapData3D) {
-    const chunkSize = mapData3D.chunkSize || 16;
-    const chunksX = Math.ceil(mapData3D.sizeX / chunkSize);
-    const chunksY = Math.ceil(mapData3D.sizeY / chunkSize);
-    const chunksZ = Math.ceil(mapData3D.sizeZ / chunkSize);
+  _iterateChunks(mapData3D) {
+    const size = mapData3D.chunkSize || 16;
+    const limits = this._calculateChunkLimits(mapData3D, size);
+    this._loopChunksZ(mapData3D, size, limits);
+  }
 
-    for (let cz = 0; cz < chunksZ; cz++) {
-      for (let cy = 0; cy < chunksY; cy++) {
-        for (let cx = 0; cx < chunksX; cx++) {
-          this.buildChunk(mapData3D, cx, cy, cz);
-        }
-      }
+  _calculateChunkLimits(mapData3D, size) {
     return {
-      chunkSize,
-      x: Math.ceil(mapData3D.sizeX / chunkSize),
-      y: Math.ceil(mapData3D.sizeY / chunkSize),
-      z: Math.ceil(mapData3D.sizeZ / chunkSize),
+      X: Math.ceil(mapData3D.width / size),
+      Y: Math.ceil(mapData3D.height / size),
+      Z: Math.ceil(mapData3D.thickness / size)
     };
   }
 
-  _buildChunksAlongZ(mapData3D, dimensions) {
-    for (let cz = 0; cz < dimensions.z; cz++) {
-      this._buildChunksAlongY(mapData3D, dimensions, cz);
+  _loopChunksZ(mapData3D, size, limits) {
+    for (let cz = 0; cz < limits.Z; cz++) {
+      this._loopChunksY(mapData3D, cz, size, limits);
     }
   }
 
-  _buildChunksAlongY(mapData3D, dimensions, cz) {
-    for (let cy = 0; cy < dimensions.y; cy++) {
-      this._buildChunksAlongX(mapData3D, dimensions, cy, cz);
+  _loopChunksY(mapData3D, cz, size, limits) {
+    for (let cy = 0; cy < limits.Y; cy++) {
+      this._loopChunksX(mapData3D, cx, cy, cz, size, limits);
     }
   }
 
-  _buildChunksAlongX(mapData3D, dimensions, cy, cz) {
-    for (let cx = 0; cx < dimensions.x; cx++) {
-      this.buildChunk(mapData3D, cx, cy, cz);
+  _loopChunksX(mapData3D, cz, cy, size, limits) {
+    for (let cx = 0; cx < limits.X; cx++) {
+      this.buildChunkMesh(mapData3D, cx, cy, cz, size);
     }
   }
 
-  /** Construye o reemplaza la geometría de un chunk específico. */
-  buildChunk(mapData3D, cx, cy, cz) {
-    const chunk = this._prepareChunk(mapData3D, cx, cy, cz);
-    this._populateChunk(mapData3D, chunk);
-    this._renderChunk(chunk);
+  buildChunkMesh(mapData3D, chunkX, chunkY, chunkZ, chunkSize) {
+    const buffers = this._createGeometryBuffers();
+    const bounds = this._calculateChunkBounds(chunkX, chunkY, chunkZ, chunkSize, mapData3D);
+    this._processVoxelVolume(mapData3D, bounds, buffers);
+    this._uploadChunkGeometry(buffers, chunkX, chunkY, chunkZ);
   }
 
-  _prepareChunk(mapData3D, cx, cy, cz) {
-    const key = this._getChunkKey(cx, cy, cz);
-    this._disposeChunk(key);
-    return this._createChunkContext(mapData3D, cx, cy, cz, key);
-  }
-
-  _getChunkKey(cx, cy, cz) {
-    return `${cx},${cy},${cz}`;
-  }
-
-  _createChunkContext(mapData3D, cx, cy, cz, key) {
-    const bounds = this._getChunkBounds(mapData3D, cx, cy, cz);
-    return {
-      key,
-      ...bounds,
-      ...this._createGeometryBuffers(),
-      colorMap: this._createMaterialColorMap(mapData3D.materials),
-      faces: RENDERER_3D_CHUNK_FACES,
-    };
-  }
-
-  _getChunkBounds(mapData3D, cx, cy, cz) {
-    const chunkSize = mapData3D.chunkSize || 16;
-    const startX = cx * chunkSize;
-    const startY = cy * chunkSize;
-    const startZ = cz * chunkSize;
-    return {
-      startX,
-      startY,
-      startZ,
-      endX: Math.min(startX + chunkSize, mapData3D.sizeX),
-      endY: Math.min(startY + chunkSize, mapData3D.sizeY),
-      endZ: Math.min(startZ + chunkSize, mapData3D.sizeZ),
-    };
-  }
-
-    const endX = Math.min(startX + chunkSize, mapData3D.sizeX);
-    const endY = Math.min(startY + chunkSize, mapData3D.sizeY);
-    const endZ = Math.min(startZ + chunkSize, mapData3D.sizeZ);
   _createGeometryBuffers() {
-    return { positions: [], normals: [], colors: [], indices: [] };
+    return { positions: [], indices: [], normals: [], colors: [], vertexCount: 0 };
   }
 
-  _createMaterialColorMap(materials) {
-    const colorMap = new Map();
-    for (const material of materials) {
-      colorMap.set(material.id, BABYLON.Color3.FromHexString(material.color));
-    }
-    return colorMap;
+  _calculateChunkBounds(cx, cy, cz, size, mapData) {
+    return {
+      sX: cx * size, eX: Math.min(cx * size + size, mapData.width),
+      sY: cy * size, eY: Math.min(cy * size + size, mapData.height),
+      sZ: cz * size, eZ: Math.min(cz * size + size, mapData.thickness)
+    };
   }
 
-  _populateChunk(mapData3D, chunk) {
-    for (let y = chunk.startY; y < chunk.endY; y++) {
-      this._populateChunkLayer(mapData3D, chunk, y);
-    }
-  }
-
-  _populateChunkLayer(mapData3D, chunk, y) {
-    for (let z = chunk.startZ; z < chunk.endZ; z++) {
-      this._populateChunkRow(mapData3D, chunk, y, z);
+  _processVoxelVolume(mapData3D, bounds, buffers) {
+    for (let z = bounds.sZ; z < bounds.eZ; z++) {
+      this._processVoxelPlaneY(mapData3D, z, bounds, buffers);
     }
   }
 
-  _populateChunkRow(mapData3D, chunk, y, z) {
-    for (let x = chunk.startX; x < chunk.endX; x++) {
-      this._populateVoxel(mapData3D, chunk, x, y, z);
+  _processVoxelPlaneY(mapData3D, z, bounds, buffers) {
+    for (let y = bounds.sY; y < bounds.eY; y++) {
+      this._processVoxelRowX(mapData3D, x, y, z, bounds, buffers);
     }
   }
 
-  _populateVoxel(mapData3D, chunk, x, y, z) {
-    const materialId = getVoxel3D(mapData3D, x, y, z);
-    if (materialId === AIR_MATERIAL_ID) return;
-    this._appendVoxelFaces(mapData3D, chunk, x, y, z, this._getVoxelColor(chunk, materialId));
-  }
-
-  _getVoxelColor(chunk, materialId) {
-    return chunk.colorMap.get(materialId) || new BABYLON.Color3(1, 1, 1);
-  }
-
-  _appendVoxelFaces(mapData3D, chunk, x, y, z, blockColor) {
-    for (const face of chunk.faces) {
-      this._appendVisibleFace(mapData3D, chunk, face, x, y, z, blockColor);
+  _processVoxelRowX(mapData3D, y, z, bounds, buffers) {
+    for (let x = bounds.sX; x < bounds.eX; x++) {
+      this._evaluateVoxelGeometry(mapData3D, x, y, z, buffers);
     }
   }
 
-  _appendVisibleFace(mapData3D, chunk, face, x, y, z, blockColor) {
-    if (!this._isFaceVisible(mapData3D, face, x, y, z)) return;
-    this._appendFaceGeometry(chunk, face, x, y, z, blockColor);
+  _evaluateVoxelGeometry(mapData3D, x, y, z, buffers) {
+    const idx = (z * mapData3D.height * mapData3D.width) + (y * mapData3D.width) + x;
+    const type = mapData3D.data[idx];
+    if (type === 0) return;
+    this._processVoxelFaces(mapData3D, x, y, z, type, buffers);
   }
 
-  _isFaceVisible(mapData3D, face, x, y, z) {
-    const neighbor = getVoxel3D(
-      mapData3D,
-      x + face.dir[0],
-      y + face.dir[1],
-      z + face.dir[2]
-    );
-    return neighbor === AIR_MATERIAL_ID;
+  _processVoxelFaces(mapData3D, x, y, z, type, buffers) {
+    for (const face of RENDERER_3D_CHUNK_FACES) {
+      this._processSingleFace(mapData3D, x, y, z, type, face, buffers);
+    }
   }
 
-  _appendFaceGeometry(chunk, face, x, y, z, blockColor) {
-    const baseVertex = chunk.positions.length / 3;
-    this._appendFaceVertices(chunk, face, x, y, z, blockColor);
-    this._appendFaceIndices(chunk, baseVertex);
+  _processSingleFace(mapData3D, x, y, z, type, face, buffers) {
+    const visible = this._checkFaceVisibility(mapData3D, x + face.dir[0], y + face.dir[1], z + face.dir[2]);
+    if (!visible) return;
+    this._buildFaceVertices(x, y, z, type, face, buffers);
   }
 
-  _appendFaceIndices(chunk, baseVertex) {
-    chunk.indices.push(baseVertex, baseVertex + 1, baseVertex + 2, baseVertex, baseVertex + 2, baseVertex + 3);
+  _checkFaceVisibility(mapData3D, nx, ny, nz) {
+    if (nx < 0 || nx >= mapData3D.width || ny < 0 || ny >= mapData3D.height || nz < 0 || nz >= mapData3D.thickness) {
+      return true;
+    }
+    const idx = (nz * mapData3D.height * mapData3D.width) + (ny * mapData3D.width) + nx;
+    return mapData3D.data[idx] === 0;
   }
 
-  _appendFaceVertices(chunk, face, x, y, z, color) {
+  _buildFaceVertices(x, y, z, type, face, buffers) {
+    const color = this._getMaterialColor(type);
     for (const vertex of face.vertices) {
-      chunk.positions.push(x + vertex[0], y + vertex[1], z + vertex[2]);
-      chunk.normals.push(face.norm[0], face.norm[1], face.norm[2]);
-      chunk.colors.push(color.r, color.g, color.b, 1);
+      buffers.positions.push(x + vertex[0], y + vertex[1], z + vertex[2]);
+      buffers.normals.push(face.norm[0], face.norm[1], face.norm[2]);
+      buffers.colors.push(color.r, color.g, color.b, 1.0);
     }
+    this._buildFaceIndices(buffers);
   }
 
-  _renderChunk(chunk) {
-    if (chunk.positions.length === 0) return;
-    const mesh = this._createChunkMesh(chunk);
-    this._registerChunkMesh(chunk.key, mesh);
+  _buildFaceIndices(buffers) {
+    buffers.indices.push(
+      buffers.vertexCount, buffers.vertexCount + 1, buffers.vertexCount + 2,
+      buffers.vertexCount, buffers.vertexCount + 2, buffers.vertexCount + 3
+    );
+    buffers.vertexCount += 4;
   }
 
-  _registerChunkMesh(chunkKey, mesh) {
-    mesh.material = this.voxelMaterial;
-    mesh.isPickable = false;
-    this.chunks.set(chunkKey, mesh);
+  _uploadChunkGeometry(buffers, cx, cy, cz) {
+    if (buffers.positions.length === 0) return;
+    const key = `${cx}_${cy}_${cz}`;
+    const mesh = new BABYLON.Mesh(`chunk_${key}`, this.scene);
+    this._applyVertexBuffers(mesh, buffers);
+    this._applyChunkMaterial(mesh, key);
   }
 
-  _createChunkMesh(chunk) {
-    const mesh = new BABYLON.Mesh(`chunk_${chunk.key}`, this.scene);
-    this._applyChunkGeometry(mesh, chunk);
-    return mesh;
-  }
-
-  _applyChunkGeometry(mesh, chunk) {
+  _applyVertexBuffers(mesh, buffers) {
     const vertexData = new BABYLON.VertexData();
-    vertexData.positions = chunk.positions;
-    vertexData.normals = chunk.normals;
-    vertexData.colors = chunk.colors;
-    vertexData.indices = chunk.indices;
+    vertexData.positions = buffers.positions;
+    vertexData.indices = buffers.indices;
+    vertexData.normals = buffers.normals;
+    vertexData.colors = buffers.colors;
     vertexData.applyToMesh(mesh);
   }
 
-  _disposeChunk(chunkKey) {
-    const mesh = this.chunks.get(chunkKey);
-    if (!mesh) return;
-    mesh.dispose();
-    this.chunks.delete(chunkKey);
+  _applyChunkMaterial(mesh, key) {
+    const mat = new BABYLON.StandardMaterial(`mat_${key}`, this.scene);
+    mat.backFaceCulling = true;
+    mesh.material = mat;
+    this.chunks.set(key, mesh);
+  }
+
+  _getMaterialColor(type) {
+    if (type === 1) return { r: 0.38, g: 0.25, b: 0.13 };
+    if (type === 2) return { r: 0.22, g: 0.55, b: 0.22 };
+    if (type === 3) return { r: 0.7, g: 0.7, b: 0.7 };
+    return { r: 1.0, g: 1.0, b: 1.0 };
   }
 
   clearAllChunks() {
-    for (const mesh of this.chunks.values()) mesh.dispose();
+    for (const [key, mesh] of this.chunks.entries()) {
+      this._disposeMesh(mesh);
+    }
     this.chunks.clear();
   }
 
-  onResize() {
+  _disposeMesh(mesh) {
+    if (!mesh) return;
+    if (mesh.material) mesh.material.dispose();
+    mesh.dispose();
+  }
+
+  _onResize() {
     if (this.engine) this.engine.resize();
   }
 
-  onUpdate() {
-    if (this.scene && this.scene.activeCamera) this.scene.render();
-  }
-
   onDestroy() {
-    this._disposeWorld();
-    this._disposeRuntime();
-    this._resetReferences();
-  }
-
-  _disposeWorld() {
-    this._disposeBounds();
+    window.removeEventListener('resize', this._resizeHandler);
+    this.active = false;
     this.clearAllChunks();
+    this._clearGraphicsEngine();
   }
 
-  _disposeRuntime() {
-    this._disposeBabylonCore();
-    this._removeCanvas();
-  }
-
-  _disposeBabylonCore() {
-    if (this.voxelMaterial) this.voxelMaterial.dispose();
-    if (this.scene) this.scene.dispose();
-    if (this.engine) this.engine.dispose();
-  }
-
-  _removeCanvas() {
-    if (this.canvas) this.canvas.remove();
-  }
-
-  _resetReferences() {
-    this.chunks = new Map();
-    this.voxelMaterial = null;
-    this.scene = null;
+  _clearGraphicsEngine() {
+    if (!this.engine) return;
+    this.engine.dispose();
     this.engine = null;
-    this.canvas = null;
-    this.camera = null;
-  }
-} No newline at end of file
-
-// =========================================================================
-  // SOPORTE DE GIZMOS 3D INTERACTIVOS (S1-33)
-  // Manejo de herramientas de transformación (traslación, rotación, escala)
-  // =========================================================================
-
-  /**
-   * Inicializa o devuelve la instancia de GizmoManager para la escena de Babylon.
-   * Se crea solo cuando se necesita para no sobrecargar el render inicial.
-   */
-  getGizmoManager() {
-    if (!this.gizmoManager && this.scene) {
-      this.gizmoManager = new BABYLON.GizmoManager(this.scene);
-      this.gizmoManager.positionGizmoEnabled = true;
-      this.gizmoManager.rotationGizmoEnabled = false;
-      this.gizmoManager.scaleGizmoEnabled = false;
-      this.gizmoManager.usePointerToAttachGizmos = false; // Solo anclaje manual a primitivas
-    }
-    return this.gizmoManager;
-  }
-
-  /**
-   * Acopla las flechas del Gizmo a una malla (ej: previsualización de primitiva).
-   * @param {BABYLON.AbstractMesh} mesh Malla a transformar
-   * @param {'position'|'rotation'|'scale'} mode Modo de interacción
-   */
-  attachGizmo(mesh, mode = 'position') {
-    const gm = this.getGizmoManager();
-    if (!gm) return;
-
-    gm.positionGizmoEnabled = (mode === 'position');
-    gm.rotationGizmoEnabled = (mode === 'rotation');
-    gm.scaleGizmoEnabled = (mode === 'scale');
-
-    gm.attachToMesh(mesh);
-  }
-
-  /**
-   * Oculta y retira los gizmos activos de la escena.
-   */
-  detachGizmo() {
-    if (this.gizmoManager) {
-      this.gizmoManager.attachToMesh(null);
-    }
-  }
-
-  /**
-   * Limpieza de los gizmos al destruir la escena.
-   */
-  disposeGizmo() {
-    if (this.gizmoManager) {
-      this.gizmoManager.dispose();
-      this.gizmoManager = null;
-    }
+    this.scene = null;
+    this.cameraController = null;
+    this.isInitialized = false;
   }
 }

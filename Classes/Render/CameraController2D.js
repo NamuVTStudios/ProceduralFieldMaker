@@ -2,10 +2,9 @@
  * CameraController2D.js
  * Controlador de cámara 2D estilo Photoshop para Pixi.js.
  * Paneo con botón secundario/central y zoom enfocado a la posición del cursor.
+ * Refactorizado bajo la regla estricta de un máximo de 3 subtareas por método.
  */
-import { AppObject } from '../Base/AppObject.js';
-
-export class CameraController2D extends AppObject {
+class CameraController2D extends AppObject {
   /**
    * @param {object} appManager
    * @param {PIXI.Container} worldContainer Contenedor del mundo de Renderer2D
@@ -24,6 +23,10 @@ export class CameraController2D extends AppObject {
     this.lastPanX = 0;
     this.lastPanY = 0;
 
+    this._bindContexts();
+  }
+
+  _bindContexts() {
     this._onPointerDown = this._onPointerDown.bind(this);
     this._onPointerMove = this._onPointerMove.bind(this);
     this._onPointerUp = this._onPointerUp.bind(this);
@@ -32,44 +35,61 @@ export class CameraController2D extends AppObject {
 
   onInit() {
     if (!this.canvas) return;
+    this._addListeners();
+  }
 
+  _addListeners() {
     this.canvas.addEventListener('pointerdown', this._onPointerDown);
     window.addEventListener('pointermove', this._onPointerMove);
     window.addEventListener('pointerup', this._onPointerUp);
     this.canvas.addEventListener('wheel', this._onWheel, { passive: false });
-
-    // Evitar el menú contextual del navegador al panear con click derecho
     this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
   screenToWorld(screenX, screenY) {
     if (!this.worldContainer) return { x: screenX, y: screenY };
+    return this._calculateWorldPosition(screenX, screenY);
+  }
+
+  _calculateWorldPosition(sX, sY) {
     return {
-      x: (screenX - this.worldContainer.position.x) / this.zoomLevel,
-      y: (screenY - this.worldContainer.position.y) / this.zoomLevel
+      x: (sX - this.worldContainer.position.x) / this.zoomLevel,
+      y: (sY - this.worldContainer.position.y) / this.zoomLevel
     };
   }
 
   _onPointerDown(e) {
-    // Paneo con botón secundario (2) o central/rueda (1)
     if (e.button === 1 || e.button === 2) {
-      this.isPanning = true;
-      this.lastPanX = e.clientX;
-      this.lastPanY = e.clientY;
+      this._startPanning(e.clientX, e.clientY);
     }
+  }
+
+  _startPanning(clientX, clientY) {
+    this.isPanning = true;
+    this.lastPanX = clientX;
+    this.lastPanY = clientY;
   }
 
   _onPointerMove(e) {
     if (!this.isPanning || !this.worldContainer) return;
+    this._applyPanningDelta(e.clientX, e.clientY);
+  }
 
-    const dx = e.clientX - this.lastPanX;
-    const dy = e.clientY - this.lastPanY;
+  _applyPanningDelta(clientX, clientY) {
+    const dx = clientX - this.lastPanX;
+    const dy = clientY - this.lastPanY;
+    this._shiftWorldPosition(dx, dy);
+    this._updateLastPanCoordinates(clientX, clientY);
+  }
 
+  _shiftWorldPosition(dx, dy) {
     this.worldContainer.position.x += dx;
     this.worldContainer.position.y += dy;
+  }
 
-    this.lastPanX = e.clientX;
-    this.lastPanY = e.clientY;
+  _updateLastPanCoordinates(clientX, clientY) {
+    this.lastPanX = clientX;
+    this.lastPanY = clientY;
   }
 
   _onPointerUp(e) {
@@ -81,27 +101,42 @@ export class CameraController2D extends AppObject {
   _onWheel(e) {
     e.preventDefault();
     if (!this.worldContainer) return;
+    this._processZoomFocalized(e);
+  }
 
+  _processZoomFocalized(e) {
+    const cursor = this._getCursorRelativeCoords(e.clientX, e.clientY);
+    const worldBefore = this.screenToWorld(cursor.x, cursor.y);
+    this._executeZoomScaling(e.deltaY);
+    const worldAfter = this.screenToWorld(cursor.x, cursor.y);
+    this._adjustWorldPositionFocalized(worldBefore, worldAfter);
+  }
+
+  _getCursorRelativeCoords(clientX, clientY) {
     const rect = this.canvas.getBoundingClientRect();
-    const cursorX = e.clientX - rect.left;
-    const cursorY = e.clientY - rect.top;
+    return {
+      x: clientX - rect.left,
+      y: clientY - rect.top
+    };
+  }
 
-    // Zoom focalizado al cursor (especificación del TDD 3.3)
-    const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
-    const newZoom = Math.max(this.minZoom, Math.min(this.maxZoom, this.zoomLevel * zoomFactor));
-
-    const worldBefore = this.screenToWorld(cursorX, cursorY);
-    this.zoomLevel = newZoom;
+  _executeZoomScaling(deltaY) {
+    const factor = deltaY > 0 ? 0.9 : 1.1;
+    this.zoomLevel = Math.max(this.minZoom, Math.min(this.maxZoom, this.zoomLevel * factor));
     this.worldContainer.scale.set(this.zoomLevel);
+  }
 
-    const worldAfter = this.screenToWorld(cursorX, cursorY);
-
-    this.worldContainer.position.x += (worldAfter.x - worldBefore.x) * this.zoomLevel;
-    this.worldContainer.position.y += (worldAfter.y - worldBefore.y) * this.zoomLevel;
+  _adjustWorldPositionFocalized(before, after) {
+    this.worldContainer.position.x += (after.x - before.x) * this.zoomLevel;
+    this.worldContainer.position.y += (after.y - before.y) * this.zoomLevel;
   }
 
   onDestroy() {
     if (!this.canvas) return;
+    this._removeListeners();
+  }
+
+  _removeListeners() {
     this.canvas.removeEventListener('pointerdown', this._onPointerDown);
     window.removeEventListener('pointermove', this._onPointerMove);
     window.removeEventListener('pointerup', this._onPointerUp);

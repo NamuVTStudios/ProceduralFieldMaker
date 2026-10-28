@@ -1,22 +1,20 @@
 /**
  * MapData2D.js
- * Estructura de datos plana (no clase) para el modo 2D — se pasa directo
- * a Web Workers como Transferable Object. También define `createMaterial`
- * y `AIR_MATERIAL_ID`, compartidos con MapData3D.js (por eso este archivo
- * debe cargarse ANTES que MapData3D.js en index.html).
+ * Estructura de datos plana para el modo 2D.
+ * Refactorizado en subtareas planas de un máximo de 3 subtareas por función.
  */
 
 const AIR_MATERIAL_ID = 0;
 
 /**
  * Crea una definición de material con valores por defecto.
- * Compartido entre MapData2D y MapData3D (ver sección 4.3 del TDD).
- * @param {Partial<{id:number,name:string,destructible:boolean,hardness:number,color:string,textureId:string}>} data
+ * @param {object} data
  */
 function createMaterial(data) {
+  const defaults = _getMaterialDefaults(data);
   return {
     id: data.id,
-    name: data.name ?? `material_${data.id}`,
+    name: data.name ?? defaults.name,
     destructible: data.destructible ?? true,
     hardness: data.hardness ?? 1,
     color: data.color ?? '#ffffff',
@@ -24,10 +22,13 @@ function createMaterial(data) {
   };
 }
 
-/**
- * Catálogo de materiales por defecto (TDD 4.3 y 6.1): dureza Arena 1, Tierra 3, Roca 6; Agua 0.
- * Compartido entre 2D y 3D, se usa al crear un lienzo nuevo.
- */
+function _getMaterialDefaults(data) {
+  return {
+    name: `material_${data.id}`
+  };
+}
+
+/** Catálogo de materiales por defecto. */
 function createDefaultMaterials() {
   return [
     createMaterial({ id: 1, name: 'Arena', hardness: 1, color: '#e0c068' }),
@@ -37,19 +38,17 @@ function createDefaultMaterials() {
   ];
 }
 
-/**
- * Crea una estructura MapData2D vacía (llena de aire).
- * @param {{width:number, height:number, cellSize?:number, seed:string, materials:object[]}} config
- */
+/** Crea una estructura MapData2D vacía (llena de aire). */
 function createMapData2D(config) {
+  const size = config.width * config.height;
   return {
     width: config.width,
     height: config.height,
     cellSize: config.cellSize ?? 16,
-    cells: new Uint8Array(config.width * config.height).fill(AIR_MATERIAL_ID),
+    cells: new Uint8Array(size).fill(AIR_MATERIAL_ID),
     materials: config.materials,
     seed: config.seed,
-    seedHash: hashSeedToInt(config.seed), // definida en NoiseGenerator.js
+    seedHash: hashSeedToInt(config.seed),
   };
 }
 
@@ -59,11 +58,17 @@ function getCellIndex2D(mapData2D, x, y) {
 }
 
 function getCell2D(mapData2D, x, y) {
-  if (x < 0 || y < 0 || x >= mapData2D.width || y >= mapData2D.height) return AIR_MATERIAL_ID;
-  return mapData2D.cells[getCellIndex2D(mapData2D, x, y)];
+  if (this._isOutOfBounds2D(mapData2D, x, y)) return AIR_MATERIAL_ID;
+  const idx = getCellIndex2D(mapData2D, x, y);
+  return mapData2D.cells[idx];
 }
 
 function setCell2D(mapData2D, x, y, materialId) {
-  if (x < 0 || y < 0 || x >= mapData2D.width || y >= mapData2D.height) return;
-  mapData2D.cells[getCellIndex2D(mapData2D, x, y)] = materialId;
+  if (this._isOutOfBounds2D(mapData2D, x, y)) return;
+  const idx = getCellIndex2D(mapData2D, x, y);
+  mapData2D.cells[idx] = materialId;
+}
+
+function _isOutOfBounds2D(mapData2D, x, y) {
+  return x < 0 || y < 0 || x >= mapData2D.width || y >= mapData2D.height;
 }

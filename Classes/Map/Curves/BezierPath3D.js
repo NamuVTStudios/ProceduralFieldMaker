@@ -1,15 +1,10 @@
 /**
  * BezierPath3D.js
  * Generador y rasterizador de curvas Bézier cúbicas en espacio tridimensional.
- * Permite extrusión de túneles y conductos de vóxels optimizados para MapData3D.
+ * Refactorizado en subtareas de un máximo de 3 subtareas por método.
  */
-
-export class BezierPath3D {
-  /**
-   * @param {Array<{x: number, y: number, z: number}>} controlPoints Array con 4 puntos {x, y, z}
-   */
+class BezierPath3D {
   constructor(controlPoints = []) {
-    // Requiere 4 puntos de control para Bézier cúbica (P0: inicio, P1/P2: manijas, P3: fin)
     this.points = controlPoints.length === 4 ? controlPoints : [
       { x: 0, y: 0, z: 0 },
       { x: 10, y: 15, z: 5 },
@@ -18,111 +13,127 @@ export class BezierPath3D {
     ];
   }
 
-  /**
-   * Evalúa la posición (x, y, z) en la curva según el parámetro t en el rango [0, 1].
-   * @param {number} t
-   * @returns {{x: number, y: number, z: number}}
-   */
   getPoint(t) {
-    const p = this.points;
     const u = 1 - t;
-    const tt = t * t;
-    const uu = u * u;
-    const uuu = uu * u;
-    const ttt = tt * t;
-
-    // Fórmula polinómica estándar de Bézier cúbica
-    const x = uuu * p[0].x + 3 * uu * t * p[1].x + 3 * u * tt * p[2].x + ttt * p[3].x;
-    const y = uuu * p[0].y + 3 * uu * t * p[1].y + 3 * u * tt * p[2].y + ttt * p[3].y;
-    const z = uuu * p[0].z + 3 * uu * t * p[1].z + 3 * u * tt * p[2].z + ttt * p[3].z;
-
-    return { x, y, z };
+    const poly = this._calculatePolynomialTerms(t, u);
+    return this._computeBezierCoordinate(poly);
   }
 
-  /**
-   * Calcula la longitud estimada de la curva dividiéndola en segmentos rectilíneos.
-   * @param {number} samples
-   * @returns {number}
-   */
+  _calculatePolynomialTerms(t, u) {
+    return {
+      uuu: u * u * u,
+      uu3t: 3 * u * u * t,
+      u3tt: 3 * u * t * t,
+      ttt: t * t * t
+    };
+  }
+
+  _computeBezierCoordinate(p) {
+    const pts = this.points;
+    return {
+      x: p.uuu * pts[0].x + p.uu3t * pts[1].x + p.u3tt * pts[2].x + p.ttt * pts[3].x,
+      y: p.uuu * pts[0].y + p.uu3t * pts[1].y + p.u3tt * pts[2].y + p.ttt * pts[3].y,
+      z: p.uuu * pts[0].z + p.uu3t * pts[1].z + p.u3tt * pts[2].z + p.ttt * pts[3].z
+    };
+  }
+
   estimateLength(samples = 20) {
-    let length = 0;
-    let prev = this.getPoint(0);
-
-    for (let i = 1; i <= samples; i++) {
-      const curr = this.getPoint(i / samples);
-      const dx = curr.x - prev.x;
-      const dy = curr.y - prev.y;
-      const dz = curr.z - prev.z;
-      length += Math.sqrt(dx * dx + dy * dy + dz * dz);
-      prev = curr;
-    }
-
-    return length;
+    const context = { length: 0, prev: this.getPoint(0) };
+    this._loopLengthEstimation(samples, context);
+    return context.length;
   }
 
-  /**
-   * Rasteriza la extrusión volumétrica a lo largo de la curva dentro de MapData3D.
-   * Diseñado con acceso directo a buffers para compatibilidad con Web Workers.
-   * @param {object} mapData3D Instancia de MapData3D
-   * @param {number} radius Radio del túnel / tubo
-   * @param {number} materialId ID de material (0 = aire para cavar, >0 para construir)
-   * @param {object} [renderer3D] Instancia opcional para remallar chunks afectados
-   */
-  rasterizeExtrusion(mapData3D, radius, materialId = 0, renderer3D = null) {
-    const { sizeX, sizeY, sizeZ } = mapData3D;
-    const chunkSize = mapData3D.chunkSize || 16;
-    const dirtyChunks = new Set();
+  _loopLengthEstimation(samples, context) {
+    for (let i = 1; i <= samples; i++) {
+      this._accumulateSegmentLength(i, samples, context);
+    }
+  }
 
-    // Determinar cantidad de muestras según la longitud para no dejar espacios vacíos
+  _accumulateSegmentLength(i, samples, context) {
+    const curr = this.getPoint(i / samples);
+    const dx = curr.x - context.prev.x;
+    const dy = curr.y - context.prev.y;
+    const dz = curr.z - context.prev.z;
+    context.length += Math.sqrt(dx * dx + dy * dy + dz * dz);
+    context.prev = curr;
+  }
+
+  rasterizeExtrusion(mapData3D, radius, materialId = 0, renderer3D = null) {
+    const steps = this._calculateExtrusionSteps();
+    const dirtyChunks = new Set();
+    this._loopExtrusionSteps(steps, radius, materialId, mapData3D, dirtyChunks);
+    this._rebuildSelectiveChunks(mapData3D, dirtyChunks, renderer3D);
+  }
+
+  _calculateExtrusionSteps() {
     const length = this.estimateLength();
-    const steps = Math.max(10, Math.ceil(length * 2)); // 2 muestras por unidad métrica
+    return Math.max(10, Math.ceil(length * 2));
+  }
+
+  _loopExtrusionSteps(steps, radius, materialId, mapData3D, dirtyChunks) {
     const rInt = Math.ceil(radius);
     const rSq = radius * radius;
-
     for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
-      const center = this.getPoint(t);
-
-      const cx = Math.round(center.x);
-      const cy = Math.round(center.y);
-      const cz = Math.round(center.z);
-
-      // Bounding box local de la esfera en el punto actual de la curva
-      const minX = Math.max(0, cx - rInt);
-      const maxX = Math.min(sizeX - 1, cx + rInt);
-      const minY = Math.max(0, cy - rInt);
-      const maxY = Math.min(sizeY - 1, cy + rInt);
-      const minZ = Math.max(0, cz - rInt);
-      const maxZ = Math.min(sizeZ - 1, cz + rInt);
-
-      for (let z = minZ; z <= maxZ; z++) {
-        const dz = z - center.z;
-        for (let y = minY; y <= maxY; y++) {
-          const dy = y - center.y;
-          for (let x = minX; x <= maxX; x++) {
-            const dx = x - center.x;
-
-            // Condición esférica a lo largo de la trayectoria
-            if (dx * dx + dy * dy + dz * dz <= rSq) {
-              setVoxel3D(mapData3D, x, y, z, materialId);
-
-              // Marcar chunk como sucio
-              const chX = Math.floor(x / chunkSize);
-              const chY = Math.floor(y / chunkSize);
-              const chZ = Math.floor(z / chunkSize);
-              dirtyChunks.add(`${chX},${chY},${chZ}`);
-            }
-          }
-        }
-      }
+      this._processExtrusionStep(i, steps, rInt, rSq, materialId, mapData3D, dirtyChunks);
     }
+  }
 
-    // Remallado selectivo en Babylon.js
-    if (renderer3D && typeof renderer3D.rebuildChunk === 'function') {
-      for (const key of dirtyChunks) {
-        const [chX, chY, chZ] = key.split(',').map(Number);
-        renderer3D.rebuildChunk(mapData3D, chX, chY, chZ);
-      }
+  _processExtrusionStep(i, steps, rInt, rSq, materialId, mapData3D, dirtyChunks) {
+    const center = this.getPoint(i / steps);
+    const bounds = this._calculateStepBounds(center, rInt, mapData3D);
+    this._rasterizeStepVolume(center, bounds, rSq, materialId, mapData3D, dirtyChunks);
+  }
+
+  _calculateStepBounds(center, rInt, mapData3D) {
+    const cx = Math.round(center.x);
+    const cy = Math.round(center.y);
+    const cz = Math.round(center.z);
+    return {
+      minX: Math.max(0, cx - rInt), maxX: Math.min(mapData3D.sizeX - 1, cx + rInt),
+      minY: Math.max(0, cy - rInt), maxY: Math.min(mapData3D.sizeY - 1, cy + rInt),
+      minZ: Math.max(0, cz - rInt), maxZ: Math.min(mapData3D.sizeZ - 1, cz + rInt)
+    };
+  }
+
+  _rasterizeStepVolume(center, bounds, rSq, materialId, mapData3D, dirtyChunks) {
+    for (let z = bounds.minZ; z <= bounds.maxZ; z++) {
+      this._rasterizeStepPlane(center, bounds, z, rSq, materialId, mapData3D, dirtyChunks);
+    }
+  }
+
+  _rasterizeStepPlane(center, bounds, z, rSq, materialId, mapData3D, dirtyChunks) {
+    for (let y = bounds.minY; y <= bounds.maxY; y++) {
+      this._rasterizeStepRow(center, bounds, y, z, rSq, materialId, mapData3D, dirtyChunks);
+    }
+  }
+
+  _rasterizeStepRow(center, bounds, y, z, rSq, materialId, mapData3D, dirtyChunks) {
+    for (let x = bounds.minX; x <= bounds.maxX; x++) {
+      this._evaluateStepVoxel(center, x, y, z, rSq, materialId, mapData3D, dirtyChunks);
+    }
+  }
+
+  _evaluateStepVoxel(center, x, y, z, rSq, materialId, mapData3D, dirtyChunks) {
+    const dx = x - center.x;
+    const dy = y - center.y;
+    const dz = z - center.z;
+    if (dx * dx + dy * dy + dz * dz > rSq) return;
+    setVoxel3D(mapData3D, x, y, z, materialId);
+    this._markChunkAsDirty(x, y, z, mapData3D.chunkSize || 16, dirtyChunks);
+  }
+
+  _markChunkAsDirty(x, y, z, size, dirtyChunks) {
+    const chX = Math.floor(x / size);
+    const chY = Math.floor(y / size);
+    const chZ = Math.floor(z / size);
+    dirtyChunks.add(`${chX},${chY},${chZ}`);
+  }
+
+  _rebuildSelectiveChunks(mapData3D, dirtyChunks, renderer3D) {
+    if (!renderer3D || typeof renderer3D.rebuildChunk !== 'function') return;
+    for (const key of dirtyChunks) {
+      const [chX, chY, chZ] = key.split(',').map(Number);
+      renderer3D.rebuildChunk(mapData3D, chX, chY, chZ);
     }
   }
 }

@@ -1,21 +1,20 @@
 /**
  * UI.js
- * Toda la interfaz de la app se crea acá, desde JavaScript (el HTML solo carga los scripts):
- *  - Menú inicial para elegir la dimensión del lienzo (2D o 3D).
- *  - Barra de herramientas (#controles) con un botón por Tool registrada y el botón "Menú".
- * Los estilos están en styles.css.
+ * Construcción dinámica de la interfaz de usuario y viewports de Procedural Field Maker.
+ * Refactorizado bajo la regla estricta de un máximo de 3 subtareas por método.
  */
 class UI {
     constructor(appManager) {
         this.appManager = appManager;
         this._isMobile = this._detectMobile();
-        this.toolButtons = new Map(); // tool -> botón
+        this.toolButtons = new Map();
         this._buildInitialView();
         this._bindResizeEvents();
     }
 
     _buildInitialView() {
         this._buildRoot();
+        this._buildViewports();
         this._buildMenuAndToolbar();
     }
 
@@ -29,22 +28,45 @@ class UI {
         window.addEventListener('resize', () => this._onResize());
     }
 
-    // ---------------------------------------------------------------------
-    // Construcción de la interfaz
-    // ---------------------------------------------------------------------
-
     /** Crea un elemento con clase y texto opcionales. */
     _el(tag, className, text) {
         const el = document.createElement(tag);
-        if (className) el.className = className;
-        if (text !== undefined) el.textContent = text;
+        this._applyElementData(el, className, text);
         return el;
     }
 
-    /** Contenedor raíz: queda por encima de los canvas y no bloquea el input fuera de los controles. */
+    /** @private */
+    _applyElementData(el, className, text) {
+        if (className) el.className = className;
+        if (text !== undefined) el.textContent = text;
+    }
+
+    /** Contenedor raíz de la interfaz gráfica. */
     _buildRoot() {
         this.root = this._el('div', 'ui-root');
         document.body.appendChild(this.root);
+    }
+
+    /** 
+     * Genera e inyecta los viewports requeridos por Pixi.js y Babylon.js (GDD 6.2 / TDD 3.2).
+     */
+    _buildViewports() {
+        this._buildCanvasContainer2D();
+        this._buildCanvas3D();
+    }
+
+    /** @private */
+    _buildCanvasContainer2D() {
+        this.canvasContainer2D = this._el('div', 'ui-viewport ui-hidden');
+        this.canvasContainer2D.id = 'canvasContainer2D';
+        document.body.appendChild(this.canvasContainer2D);
+    }
+
+    /** @private */
+    _buildCanvas3D() {
+        this.renderCanvas3D = this._el('canvas', 'ui-viewport ui-hidden');
+        this.renderCanvas3D.id = 'renderCanvas';
+        document.body.appendChild(this.renderCanvas3D);
     }
 
     _buildMenu() {
@@ -99,11 +121,17 @@ class UI {
         this.refreshToolButtons();
     }
 
-    /** (Re)arma los botones de la barra a partir de las tools registradas en el ToolsManager. */
+    /** Sincroniza los botones de la barra a partir de las herramientas del ToolsManager. */
     refreshToolButtons() {
         this._clearToolbarButtons();
         this._buildToolbarButtons();
-        this._highlightActive(this.appManager.toolsManager.activeTool);
+        this._updateInitialHighlight();
+    }
+
+    /** @private */
+    _updateInitialHighlight() {
+        const activeTool = this.appManager.toolsManager.activeTool;
+        this._highlightActive(activeTool);
     }
 
     _clearToolbarButtons() {
@@ -118,8 +146,13 @@ class UI {
 
     _appendRegisteredToolButtons() {
         const toolsManager = this.appManager.toolsManager;
-        for (const tool of toolsManager.tools) {
-            this._appendToolButton(tool, toolsManager);
+        this._iterateToolsRegistration(toolsManager.tools, toolsManager);
+    }
+
+    /** Itera de forma plana sin anidar control de flujo sobre los arreglos. */
+    _iterateToolsRegistration(toolsArray, toolsManager) {
+        for (let i = 0; i < toolsArray.length; i++) {
+            this._appendToolButton(toolsArray[i], toolsManager);
         }
     }
 
@@ -130,7 +163,8 @@ class UI {
     }
 
     _createToolButton(tool, toolsManager) {
-        const btn = this._el('button', '', tool.label ?? tool.constructor.name);
+        const labelText = tool.label ?? tool.constructor.name;
+        const btn = this._el('button', '', labelText);
         btn.addEventListener('click', () => this._activateTool(tool, toolsManager));
         return btn;
     }
@@ -148,34 +182,72 @@ class UI {
 
     _highlightActive(activeTool) {
         for (const [tool, btn] of this.toolButtons) {
-            btn.classList.toggle('active', tool === activeTool);
+            this._toggleButtonHighlight(btn, tool, activeTool);
         }
     }
 
+    /** @private */
+    _toggleButtonHighlight(btn, tool, activeTool) {
+        btn.classList.toggle('active', tool === activeTool);
+    }
+
     // ---------------------------------------------------------------------
-    // Flujo menú <-> lienzo de trabajo
+    // Gestión e Intercambio de Viewports (2D / 3D / Menú)
     // ---------------------------------------------------------------------
 
     showMenu() {
-        this.menu.classList.remove('ui-hidden');
-        this.toolbar.classList.add('ui-hidden');
+        this._toggleMenuVisibility(true);
+        this._toggleWorkspaceElementsVisibility(false);
     }
 
     showWorkspace() {
-        this.menu.classList.add('ui-hidden');
-        this.toolbar.classList.remove('ui-hidden');
+        this._toggleMenuVisibility(false);
+        this._toggleWorkspaceElementsVisibility(true);
+        this._syncActiveViewport();
     }
 
-    /** Se eligió 2D o 3D en el menú: crea el lienzo de trabajo y muestra las herramientas. */
+    /** @private */
+    _toggleMenuVisibility(isVisible) {
+        this.menu.classList.toggle('ui-hidden', !isVisible);
+    }
+
+    /** @private */
+    _toggleWorkspaceElementsVisibility(isVisible) {
+        this.toolbar.classList.toggle('ui-hidden', !isVisible);
+    }
+
+    /** 
+     * Sincroniza de forma atómica la visibilidad de los lienzos según el modo (TDD 3.2).
+     * @private
+     */
+    _syncActiveViewport() {
+        const mode = this.appManager.mode;
+        this.canvasContainer2D.classList.toggle('ui-hidden', mode !== '2d');
+        this.renderCanvas3D.classList.toggle('ui-hidden', mode !== '3d');
+    }
+
     _startProject(mode) {
         this.appManager.newProject(mode);
         this.showWorkspace();
     }
 
     _onMenuButton() {
-        if (!window.confirm('¿Volver al menú? Se pierde el lienzo actual.')) return;
+        const confirmed = window.confirm('¿Volver al menú? Se pierde el lienzo actual.');
+        if (!confirmed) return;
+        this._executeProjectTeardown();
+    }
+
+    /** @private */
+    _executeProjectTeardown() {
         this.appManager.closeProject();
         this.showMenu();
+        this._hideAllViewports();
+    }
+
+    /** @private */
+    _hideAllViewports() {
+        this.canvasContainer2D.classList.add('ui-hidden');
+        this.renderCanvas3D.classList.add('ui-hidden');
     }
 
     // ---------------------------------------------------------------------
@@ -183,15 +255,21 @@ class UI {
     // ---------------------------------------------------------------------
 
     _detectMobile() {
-        return window.matchMedia('(max-width: 600px)').matches || 'ontouchstart' in window;
+        const query = window.matchMedia('(max-width: 600px)').matches;
+        return query || 'ontouchstart' in window;
     }
 
     _onResize() {
         const wasMobile = this._isMobile;
         this._isMobile = this._detectMobile();
-        if (wasMobile !== this._isMobile) {
-            // el layout mobile/desktop cambió (ej. rotaron el celular, o es un tablet en el borde)
-            this.appManager.emitLayoutChange?.(this._isMobile);
+        this._evaluateLayoutMutation(wasMobile);
+    }
+
+    /** @private */
+    _evaluateLayoutMutation(wasMobile) {
+        if (wasMobile === this._isMobile) return;
+        if (typeof this.appManager.emitLayoutChange === "function") {
+            this.appManager.emitLayoutChange(this._isMobile);
         }
     }
 }

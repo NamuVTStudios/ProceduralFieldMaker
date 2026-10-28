@@ -1,6 +1,7 @@
 /**
  * utils.js
- * Funciones sueltas de propósito general, sin relación con ninguna clase en particular. Nombres verbo + descriptivos para evitar colisión con globals de Pixi/Babylon.
+ * Funciones sueltas de propósito general, sin relación con ninguna clase en particular.
+ * Refactorizado en subtareas planas de un máximo de 3 subtareas por método.
  */
 
 /**
@@ -11,20 +12,31 @@
  */
 function createObjectFromTemplate(templateData, TargetClass, appManager) {
     const instance = new TargetClass(appManager);
-    Object.assign(instance, templateData);
+    this._hydrateTemplateInstance(instance, templateData);
     return instance;
+}
+
+function _hydrateTemplateInstance(instance, data) {
+    Object.assign(instance, data);
 }
 
 /** Carga un archivo JSON de plantilla vía fetch. */
 async function loadJSONTemplate(path) {
     const response = await fetch(path);
-    if (!response.ok) throw new Error(`No se pudo cargar la plantilla: ${path}`);
+    this._validateFetchResponse(response, path);
     return response.json();
+}
+
+function _validateFetchResponse(response, path) {
+    if (!response.ok) {
+        throw new Error(`No se pudo cargar la plantilla: ${path}`);
+    }
 }
 
 /** Clampea un valor entre un mínimo y un máximo. */
 function clampValue(value, min, max) {
-    return Math.max(min, Math.min(max, value));
+    const maxBounded = Math.min(max, value);
+    return Math.max(min, maxBounded);
 }
 
 /** Dispara la descarga de un Blob en el navegador (usado por los exportadores). */
@@ -36,12 +48,22 @@ function downloadBlob(blob, filename) {
 
 function triggerBlobDownload(url, filename) {
     const link = document.createElement('a');
+    this._configureDownloadLink(link, url, filename);
+    link.click();
+}
+
+function _configureDownloadLink(link, url, filename) {
     link.href = url;
     link.download = filename;
-    link.click();
 }
 
 /** Seed alfanumérica aleatoria (ej. "PFM-7X2K9Q"); es la que ve y podrá editar el usuario. */
 function createRandomSeed() {
-  return 'PFM-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+  const payload = Math.random().toString(36);
+  return this._formatSeedPayload(payload);
+}
+
+function _formatSeedPayload(payload) {
+  const slice = payload.slice(2, 8);
+  return 'PFM-' + slice.toUpperCase();
 }

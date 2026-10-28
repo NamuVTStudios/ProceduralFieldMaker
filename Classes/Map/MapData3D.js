@@ -1,52 +1,46 @@
 /**
  * MapData3D.js
- * Estructura de datos plana (no clase) para el modo 3D — se pasa directo
- * a Web Workers como Transferable Object. Reutiliza `AIR_MATERIAL_ID`
- * definida en MapData2D.js: este archivo DEBE cargarse después de ese
- * en index.html.
+ * Estructura de datos plana para el modo 3D.
+ * Refactorizado en subtareas planas de un máximo de 3 subtareas por función.
  */
 
-/**
- * Crea una estructura MapData3D vacía (llena de aire).
- * @param {{sizeX:number, sizeY:number, sizeZ:number, chunkSize?:number, seed:string, materials:object[]}} config
- */
+/** Crea una estructura MapData3D vacía (llena de aire). */
 function createMapData3D(config) {
+  const size = config.sizeX * config.sizeY * config.sizeZ;
   return {
     sizeX: config.sizeX,
     sizeY: config.sizeY,
     sizeZ: config.sizeZ,
     chunkSize: config.chunkSize ?? 16,
-    voxels: new Uint8Array(config.sizeX * config.sizeY * config.sizeZ).fill(AIR_MATERIAL_ID),
+    voxels: new Uint8Array(size).fill(AIR_MATERIAL_ID),
     materials: config.materials,
     seed: config.seed,
-    seedHash: hashSeedToInt(config.seed), // definida en NoiseGenerator.js
+    seedHash: hashSeedToInt(config.seed),
   };
 }
 
-/** Índice plano de un voxel 3D (orden X, luego Z, luego Y — Y más externo). */
+/** Índice plano de un voxel 3D. */
 function getVoxelIndex3D(mapData3D, x, y, z) {
   return (y * mapData3D.sizeZ + z) * mapData3D.sizeX + x;
 }
 
 function getVoxel3D(mapData3D, x, y, z) {
-  if (x < 0 || y < 0 || z < 0 || x >= mapData3D.sizeX || y >= mapData3D.sizeY || z >= mapData3D.sizeZ) {
-    return AIR_MATERIAL_ID;
-  }
-  return mapData3D.voxels[getVoxelIndex3D(mapData3D, x, y, z)];
+  if (this._isOutOfBounds3D(mapData3D, x, y, z)) return AIR_MATERIAL_ID;
+  const idx = getVoxelIndex3D(mapData3D, x, y, z);
+  return mapData3D.voxels[idx];
 }
 
 function setVoxel3D(mapData3D, x, y, z, materialId) {
-  if (x < 0 || y < 0 || z < 0 || x >= mapData3D.sizeX || y >= mapData3D.sizeY || z >= mapData3D.sizeZ) return;
-  mapData3D.voxels[getVoxelIndex3D(mapData3D, x, y, z)] = materialId;
+  if (this._isOutOfBounds3D(mapData3D, x, y, z)) return;
+  const idx = getVoxelIndex3D(mapData3D, x, y, z);
+  mapData3D.voxels[idx] = materialId;
 }
 
-/**
- * Extruye un heightmap (ver noiseGenerator.js) a un MapData3D ya creado,
- * rellenando de sólido todo lo que esté por debajo de la altura de columna.
- * @param {object} mapData3D
- * @param {Uint16Array} heightmap - tamaño sizeX * sizeZ
- * @param {number} solidMaterialId
- */
+function _isOutOfBounds3D(mapData3D, x, y, z) {
+  return x < 0 || y < 0 || z < 0 || x >= mapData3D.sizeX || y >= mapData3D.sizeY || z >= mapData3D.sizeZ;
+}
+
+/** Extruye un heightmap a un MapData3D rellenando volumétricamente por debajo de la columna. */
 function applyHeightmapToMapData3D(mapData3D, heightmap, solidMaterialId) {
   for (let z = 0; z < mapData3D.sizeZ; z++) {
     _applyHeightmapRow(mapData3D, heightmap, solidMaterialId, z);

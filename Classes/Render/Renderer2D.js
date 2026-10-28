@@ -1,34 +1,25 @@
 /**
  * Renderer2D.js
  * Sistema de renderizado 2D basado en Pixi.js.
- * Hereda de AppObject y responde al ciclo de vida del AppManager.
+ * Automatizado en micro-subtareas planas para evitar control de flujo anidado.
  */
 class Renderer2D extends AppObject {
   constructor(appManager) {
     super(appManager);
-
-    // Instancia de la aplicación Pixi.js
     this.pixiApp = null;
-
-    // Contenedor del mundo (acá se dibuja el mapa y la cámara lo mueve/zoomea)
     this.worldContainer = null;
-
-    // Marco del lienzo (fondo + borde) para ver los límites del área de trabajo aunque esté vacía
     this.frameGraphics = null;
-
-    // Objeto gráfico de Pixi donde se dibujan las celdas
     this.terrainGraphics = null;
-
-    // Control de la carrera entre onInit (async) y onDestroy
     this._ready = false;
     this._destroyed = false;
   }
 
   /**
-   * Se ejecuta al registrar e inicializar el renderizador.
+   * Inicializa de manera secuencial los componentes del viewport.
    */
   async onInit() {
-    if (!(await this._initializePixiApp())) return;
+    const success = await this._initializePixiApp();
+    if (!success) return;
     this._mountWorkspace();
     this._restoreMapView();
   }
@@ -36,31 +27,38 @@ class Renderer2D extends AppObject {
   async _initializePixiApp() {
     this.pixiApp = new PIXI.Application();
     await this.pixiApp.init(this._createPixiConfiguration());
-    if (this._destroyed) {
-      this._destroyInitializingApp();
-      return false;
-    }
-    return true;
+    return this._validateAppLifecycle();
   }
 
   _createPixiConfiguration() {
     return {
-      resizeTo: window,
+      resizeTo: document.getElementById("canvasContainer2D") || window,
       backgroundColor: 0x1a1a1a,
       antialias: false,
     };
   }
 
+  _validateAppLifecycle() {
+    if (!this._destroyed) return true;
+    this._destroyInitializingApp();
+    return false;
+  }
+
   _destroyInitializingApp() {
-    if (!this.pixiApp) return;
     this.pixiApp.destroy(true, { children: true });
     this.pixiApp = null;
   }
 
   _mountWorkspace() {
     this._ready = true;
-    document.body.appendChild(this.pixiApp.canvas);
+    this._attachCanvasToDOM();
     this._createWorldLayers();
+  }
+
+  _attachCanvasToDOM() {
+    const container = document.getElementById("canvasContainer2D");
+    const target = container || document.body;
+    target.appendChild(this.pixiApp.canvas);
   }
 
   _createWorldLayers() {
@@ -96,9 +94,9 @@ class Renderer2D extends AppObject {
     this._fitWorld();
   }
 
-  /** Dibuja el fondo y el borde del área de trabajo. */
   _drawCanvasFrame(mapData2D) {
-    this._drawFrameGraphics(this._getCanvasDimensions(mapData2D));
+    const dimensions = this._getCanvasDimensions(mapData2D);
+    this._drawFrameGraphics(dimensions);
   }
 
   _getCanvasDimensions(mapData2D) {
@@ -116,10 +114,10 @@ class Renderer2D extends AppObject {
     this.frameGraphics.rect(0, 0, width, height).stroke({ width: 2, color: 0x5a5a5a, alignment: 1 });
   }
 
-  /**
-   * Escala (solo para achicar) y centra el lienzo en la ventana, así se ve completo en PC y celular.
-   * Provisorio: cuando exista CameraController2D (paneo/zoom), él toma el control de esta transformación.
-   */
+  onResize() {
+    this._fitWorld();
+  }
+
   _fitWorld() {
     const context = this._getWorldFitContext();
     if (!context) return;
@@ -150,31 +148,19 @@ class Renderer2D extends AppObject {
     );
   }
 
-  /** Llamado por AppManager.onResize() cuando cambia el tamaño de la ventana. */
-  onResize() {
-    this._fitWorld();
-  }
-
   /**
-   * Dibuja todo el mapa 2D celda por celda.
-   * @param {object} mapData2D - Estructura creada por createMapData2D
+   * Entrada de renderizado: Prepara datos y limpia el búfer gráfico.
    */
   renderFullMap(mapData2D) {
     if (!this.terrainGraphics || !mapData2D) return;
-    this._renderMapData(mapData2D);
-  }
-
-  _renderMapData(mapData2D) {
-    const renderData = this._prepareMapRenderData(mapData2D);
     this.terrainGraphics.clear();
-    this._drawMapRows(mapData2D, renderData.cellSize, renderData.materialColorMap);
+    this._processMapRendering(mapData2D);
   }
 
-  _prepareMapRenderData(mapData2D) {
-    return {
-      cellSize: mapData2D.cellSize || 16,
-      materialColorMap: this._createMaterialColorMap(mapData2D.materials),
-    };
+  _processMapRendering(mapData2D) {
+    const cellSize = mapData2D.cellSize || 16;
+    const colorMap = this._createMaterialColorMap(mapData2D.materials);
+    this._drawMapRows(mapData2D, cellSize, colorMap);
   }
 
   _createMaterialColorMap(materials) {
@@ -185,23 +171,33 @@ class Renderer2D extends AppObject {
     return colorMap;
   }
 
-  _drawMapRows(mapData2D, cellSize, materialColorMap) {
+  /**
+   * Itera filas eliminando bucles anidados directos en un único método.
+   */
+  _drawMapRows(mapData2D, cellSize, colorMap) {
     for (let y = 0; y < mapData2D.height; y++) {
-      this._drawMapRow(mapData2D, y, cellSize, materialColorMap);
+      this._drawMapRow(mapData2D, y, cellSize, colorMap);
     }
   }
 
-  _drawMapRow(mapData2D, y, cellSize, materialColorMap) {
+  _drawMapRow(mapData2D, y, cellSize, colorMap) {
     for (let x = 0; x < mapData2D.width; x++) {
-      this._drawMapCell(mapData2D, x, y, cellSize, materialColorMap);
+      this._drawMapCell(mapData2D, x, y, cellSize, colorMap);
     }
   }
 
-  _drawMapCell(mapData2D, x, y, cellSize, materialColorMap) {
-    const materialId = getCell2D(mapData2D, x, y);
+  _drawMapCell(mapData2D, x, y, cellSize, colorMap) {
+    const materialId = this._resolveCellMaterial(mapData2D, x, y);
     if (materialId === 0) return;
-    const color = materialColorMap.get(materialId) || 0xffffff;
+    const color = colorMap.get(materialId) || 0xffffff;
     this._drawSolidCell(x, y, cellSize, color);
+  }
+
+  _resolveCellMaterial(mapData2D, x, y) {
+    if (typeof getCell2D === "function") {
+      return getCell2D(mapData2D, x, y);
+    }
+    return mapData2D.data[y * mapData2D.width + x];
   }
 
   _drawSolidCell(x, y, cellSize, color) {
@@ -209,23 +205,24 @@ class Renderer2D extends AppObject {
     this.terrainGraphics.fill(color);
   }
 
-  /**
-   * Ciclo por fotograma (Tick).
-   * @param {number} dt Delta time
-   */
   onUpdate(dt) {
-    // Acá se pueden animar partículas o efectos de agua más adelante
+    if (this.appManager.paused) return;
   }
 
-  /**
-   * Limpieza al desmontar el modo 2D.
-   */
   onDestroy() {
     this._destroyed = true;
-    // Si Pixi todavía se está inicializando, onInit se encarga de destruirlo al terminar
-    if (this._ready && this.pixiApp) {
-      this.pixiApp.destroy(true, { children: true });
-      this.pixiApp = null;
-    }
+    this._clearWorkspaceResources();
+  }
+
+  _clearWorkspaceResources() {
+    if (!this._ready || !this.pixiApp) return;
+    this._removeCanvasFromDOM();
+    this.pixiApp.destroy(true, { children: true });
+    this.pixiApp = null;
+  }
+
+  _removeCanvasFromDOM() {
+    if (!this.pixiApp.canvas || !this.pixiApp.canvas.parentNode) return;
+    this.pixiApp.canvas.parentNode.removeChild(this.pixiApp.canvas);
   }
 }

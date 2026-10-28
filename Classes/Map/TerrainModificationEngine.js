@@ -1,12 +1,7 @@
 /**
  * TerrainModificationEngine.js
- *
- * Submotor de edición de terreno. Modifica los buffers MapData2D/MapData3D
- * y devuelve la región afectada para que el renderer pueda actualizarla.
- * No implementa físicas: el terreno esculpido queda tal como se modifica.
- *
- * Depende de globales cargados antes por <script>: AIR_MATERIAL_ID,
- * getCell2D/setCell2D, getVoxel3D/setVoxel3D y NoiseGenerator.
+ * Submotor de edición y deformación procedural de terreno.
+ * Refactorizado bajo la regla estricta de un máximo de 3 subtareas por método.
  */
 class TerrainModificationEngine {
   constructor(appManager) {
@@ -14,7 +9,8 @@ class TerrainModificationEngine {
   }
 
   _getMaterial(mapData, materialId) {
-    return mapData.materials.find(material => material.id === materialId) ?? null;
+    const material = mapData.materials.find(m => m.id === materialId);
+    return material ?? null;
   }
 
   _isMapData3D(mapData) {
@@ -22,8 +18,14 @@ class TerrainModificationEngine {
   }
 
   _getNoise(mapData) {
-    if (this._needsNewNoise(mapData)) this._createNoiseForMap(mapData);
+    this._ensureNoiseSynchronized(mapData);
     return this._noise;
+  }
+
+  _ensureNoiseSynchronized(mapData) {
+    if (this._needsNewNoise(mapData)) {
+      this._createNoiseForMap(mapData);
+    }
   }
 
   _needsNewNoise(mapData) {
@@ -46,23 +48,33 @@ class TerrainModificationEngine {
   }
 
   _setMaterialAt(mapData, x, y, z, materialId) {
+    this._writeMaterialData(mapData, x, y, z, materialId);
+  }
+
+  _writeMaterialData(mapData, x, y, z, materialId) {
     if (this._isMapData3D(mapData)) {
       setVoxel3D(mapData, x, y, z, materialId);
-      return;
+    } else {
+      setCell2D(mapData, x, y, materialId);
     }
-    setCell2D(mapData, x, y, materialId);
   }
 
   /** Destruye celdas/voxels que no resistan la energía de impacto. */
   applyEraser(mapData, center, radius, impactEnergy) {
     const affectedRegion = this._computeBoundingBox(mapData, center, radius);
-    let anyDestroyed = false;
-
+    const execution = { anyDestroyed: false };
+    
     this._forEachCellInRadius(mapData, center, radius, (x, y, z) => {
-      if (this._eraseMaterialAt(mapData, x, y, z, impactEnergy)) anyDestroyed = true;
+      this._executeErasePipeline(mapData, x, y, z, impactEnergy, execution);
     });
 
-    return { affectedRegion, anyDestroyed };
+    return { affectedRegion, anyDestroyed: execution.anyDestroyed };
+  }
+
+  _executeErasePipeline(mapData, x, y, z, energy, execution) {
+    if (this._eraseMaterialAt(mapData, x, y, z, energy)) {
+      execution.anyDestroyed = true;
+    }
   }
 
   _eraseMaterialAt(mapData, x, y, z, impactEnergy) {
@@ -74,8 +86,7 @@ class TerrainModificationEngine {
 
   _canEraseMaterial(material, impactEnergy) {
     if (!material || !material.destructible) return false;
-    if (impactEnergy < material.hardness) return false;
-    return true;
+    return impactEnergy >= material.hardness;
   }
 
   /** Deposita material únicamente sobre celdas/voxels vacíos. */
@@ -132,12 +143,16 @@ class TerrainModificationEngine {
   }
 
   _sampleNoiseAt(x, y, z, context) {
-    const sampleX = x * context.frequency;
-    const sampleY = y * context.frequency;
+    const sX = x * context.frequency;
+    const sY = y * context.frequency;
+    return this._evaluateDimensionNoise(sX, sY, z, context);
+  }
+
+  _evaluateDimensionNoise(sX, sY, z, context) {
     if (context.is3D) {
-      return context.noise.perlin3D(sampleX, sampleY, z * context.frequency);
+      return context.noise.perlin3D(sX, sY, z * context.frequency);
     }
-    return context.noise.perlin2D(sampleX, sampleY);
+    return context.noise.perlin2D(sX, sY);
   }
 
   /** Clona una región 2D del origen al destino. */
@@ -167,7 +182,9 @@ class TerrainModificationEngine {
 
   _copyCloneStampCell(mapData2D, source, target, radius, dx, dy) {
     if (dx * dx + dy * dy > radius * radius) return;
-    const sourceMaterialId = getCell2D(mapData2D, source.x + dx, source.y + dy);
+    const sIdxX = source.x + dx;
+    const sIdxY = source.y + dy;
+    const sourceMaterialId = getCell2D(mapData2D, sIdxX, sIdxY);
     setCell2D(mapData2D, target.x + dx, target.y + dy, sourceMaterialId);
   }
 
@@ -194,10 +211,14 @@ class TerrainModificationEngine {
     };
   }
 
-  /** Ejecuta callback en cada celda/voxel contenido por el radio solicitado. */
+  /** Ejecuta el callback en cada celda/voxel contenido por el radio. */
   _forEachCellInRadius(mapData, center, radius, callback) {
     const region = this._computeBoundingBox(mapData, center, radius, 0);
     const context = { center, radiusSq: radius * radius, is3D: this._isMapData3D(mapData), callback };
+    this._loopRadiusPlanes(region, context);
+  }
+
+  _loopRadiusPlanes(region, context) {
     for (let z = region.minZ; z <= region.maxZ; z++) {
       this._forEachRadiusPlane(region, z, context);
     }
