@@ -35,6 +35,7 @@ class App {
         const tm = this.appManager.toolsManager;
         tm.register(new Brush(this.appManager));
         tm.register(new Eraser(this.appManager));
+        tm.register(new NoiseBrush(this.appManager));
         tm.register(new MagicWand(this.appManager));
     }
 

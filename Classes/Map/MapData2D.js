@@ -58,13 +58,13 @@ function getCellIndex2D(mapData2D, x, y) {
 }
 
 function getCell2D(mapData2D, x, y) {
-  if (this._isOutOfBounds2D(mapData2D, x, y)) return AIR_MATERIAL_ID;
+  if (_isOutOfBounds2D(mapData2D, x, y)) return AIR_MATERIAL_ID;
   const idx = getCellIndex2D(mapData2D, x, y);
   return mapData2D.cells[idx];
 }
 
 function setCell2D(mapData2D, x, y, materialId) {
-  if (this._isOutOfBounds2D(mapData2D, x, y)) return;
+  if (_isOutOfBounds2D(mapData2D, x, y)) return;
   const idx = getCellIndex2D(mapData2D, x, y);
   mapData2D.cells[idx] = materialId;
 }

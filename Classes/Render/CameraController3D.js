@@ -1,21 +1,14 @@
 /**
  * CameraController3D.js
- * Controlador de cámara 3D estilo Blender para Babylon.js.
- * Modos intercambiables: Órbita (inspección) y Vuelo Libre (WASD/Flythrough).
- * Refactorizado bajo la regla estricta de un máximo de 3 subtareas por método.
+ * Controlador de cámara 3D: órbita y vuelo libre.
+ * Los cambios de modo y la configuración de teclas están separados en subtareas.
  */
 class CameraController3D extends AppObject {
-  /**
-   * @param {object} appManager
-   * @param {BABYLON.Scene} scene
-   * @param {HTMLCanvasElement} canvasElement
-   */
   constructor(appManager, scene, canvasElement) {
     super(appManager);
     this.scene = scene;
     this.canvas = canvasElement;
     this.mode = 'orbit';
-
     this.orbitCamera = null;
     this.flyCamera = null;
     this._onKeyDown = this._onKeyDown.bind(this);
@@ -34,40 +27,72 @@ class CameraController3D extends AppObject {
   }
 
   _createOrbitCamera() {
-    const targetVector = new BABYLON.Vector3(32, 16, 32);
-    this.orbitCamera = new BABYLON.ArcRotateCamera('orbitCam', Math.PI / 4, Math.PI / 3, 80, targetVector, this.scene);
+    const config = this._getOrbitCameraConfig();
+    this.orbitCamera = new BABYLON.ArcRotateCamera('orbitCam', Math.PI / 4, Math.PI / 3, config.radius, config.target, this.scene);
+    this._configureOrbitCamera();
+  }
+
+  _getOrbitCameraConfig() {
+    const dimensions = this._getMapDimensions();
+    return {
+      target: this._createMapCenter(dimensions),
+      radius: this._calculateInitialRadius(dimensions),
+    };
+  }
+
+  _getMapDimensions() {
+    const mapData = this.getMapData();
+    return {
+      x: mapData?.sizeX || 64,
+      y: mapData?.sizeY || 32,
+      z: mapData?.sizeZ || 64,
+    };
+  }
+
+  _createMapCenter(dimensions) {
+    return new BABYLON.Vector3(dimensions.x / 2, dimensions.y / 2, dimensions.z / 2);
+  }
+
+  _calculateInitialRadius(dimensions) {
+    return Math.max(dimensions.x, dimensions.y, dimensions.z) * 1.65;
+  }
+
+  _configureOrbitCamera() {
     this.orbitCamera.wheelPrecision = 15;
     this.orbitCamera.lowerRadiusLimit = 5;
+    this.orbitCamera.minZ = 0.1;
+    this.orbitCamera.maxZ = 10000;
   }
 
   _createFlythroughCamera() {
-    const posVector = new BABYLON.Vector3(32, 20, -10);
-    this.flyCamera = new BABYLON.UniversalCamera('flyCam', posVector, this.scene);
-    this.flyCamera.speed = 1.0;
+    const position = this._getFlythroughStartPosition();
+    this.flyCamera = new BABYLON.UniversalCamera('flyCam', position, this.scene);
+    this._configureFlythroughCamera();
+  }
+
+  _getFlythroughStartPosition() {
+    const dimensions = this._getMapDimensions();
+    return new BABYLON.Vector3(dimensions.x / 2, dimensions.y / 2, -10);
+  }
+
+  _configureFlythroughCamera() {
+    this.flyCamera.speed = 1;
     this._setupFlyCameraKeys();
   }
 
   _setupFlyCameraKeys() {
-    this._setVerticalFlyKeys();
-    this._setHorizontalFlyKeys();
-  }
-
-  _setVerticalFlyKeys() {
-    this.flyCamera.keysUp =; // Tecla W
-    this.flyCamera.keysDown =; // Tecla S
-  }
-
-  _setHorizontalFlyKeys() {
-    this.flyCamera.keysLeft =; // Tecla A
-    this.flyCamera.keysRight =; // Tecla D
+    this.flyCamera.keysUp = [87];
+    this.flyCamera.keysDown = [83];
+    this.flyCamera.keysLeft = [65];
+    this.flyCamera.keysRight = [68];
   }
 
   _applyMode() {
     if (this.mode === 'orbit') {
       this._activateOrbitCam();
-    } else {
-      this._activateFlythroughCam();
+      return;
     }
+    this._activateFlythroughCam();
   }
 
   _activateOrbitCam() {
@@ -93,11 +118,10 @@ class CameraController3D extends AppObject {
     this._applyMode();
   }
 
-  _onKeyDown(e) {
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      this.toggleMode();
-    }
+  _onKeyDown(event) {
+    if (event.key !== 'Tab') return;
+    event.preventDefault();
+    this.toggleMode();
   }
 
   onDestroy() {

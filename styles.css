@@ -40,6 +40,32 @@ html, body {
     display: none !important;
 }
 
+/* Viewports 2D/3D creados dinámicamente por UI.js. */
+.ui-viewport {
+    position: fixed;
+    inset: 0;
+    display: block;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    touch-action: none;
+}
+
+#canvasContainer2D canvas,
+#renderCanvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+}
+
+#renderCanvas {
+    z-index: 0;
+    outline: none;
+    background: #0e1217;
+}
+
+
 .ui-menu {
     position: absolute;
     inset: 0;

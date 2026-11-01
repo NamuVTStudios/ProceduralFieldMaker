@@ -12,6 +12,11 @@ class Renderer2D extends AppObject {
     this.terrainGraphics = null;
     this._ready = false;
     this._destroyed = false;
+    this.cameraController = null;
+    this._toolPointerDown = false;
+    this._onCanvasPointerDown = (event) => this._handleToolPointerDown(event);
+    this._onToolPointerMove = (event) => this._handleToolPointerMove(event);
+    this._onToolPointerUp = (event) => this._handleToolPointerUp(event);
   }
 
   /**
@@ -22,12 +27,86 @@ class Renderer2D extends AppObject {
     if (!success) return;
     this._mountWorkspace();
     this._restoreMapView();
+    this._initializeInteractionControllers();
   }
 
   async _initializePixiApp() {
     this.pixiApp = new PIXI.Application();
     await this.pixiApp.init(this._createPixiConfiguration());
     return this._validateAppLifecycle();
+  }
+
+
+  _initializeInteractionControllers() {
+    this._initializeCameraController();
+    this._bindToolPointerEvents();
+  }
+
+  _initializeCameraController() {
+    this.cameraController = new CameraController2D(this.appManager, this.worldContainer, this.pixiApp.canvas);
+    this.cameraController.onInit();
+    this.cameraController.zoomLevel = this.worldContainer.scale.x || 1;
+  }
+
+  _bindToolPointerEvents() {
+    this.pixiApp.canvas.addEventListener('pointerdown', this._onCanvasPointerDown);
+    window.addEventListener('pointermove', this._onToolPointerMove);
+    window.addEventListener('pointerup', this._onToolPointerUp);
+  }
+
+  _handleToolPointerDown(event) {
+    if (event.button !== 0) return;
+    this._toolPointerDown = true;
+    this._dispatchActiveTool('onPointerDown', event);
+  }
+
+  _handleToolPointerMove(event) {
+    if (!this._toolPointerDown) return;
+    this._dispatchActiveTool('onPointerMove', event);
+  }
+
+  _handleToolPointerUp(event) {
+    if (!this._toolPointerDown) return;
+    this._toolPointerDown = false;
+    this._dispatchActiveTool('onPointerUp', event, null);
+  }
+
+  _dispatchActiveTool(methodName, event, coordinates = this._resolveToolCoordinates(event)) {
+    const tool = this.appManager.toolsManager.activeTool;
+    if (!tool || typeof tool[methodName] !== 'function') return;
+    tool[methodName](event, coordinates);
+  }
+
+  _resolveToolCoordinates(event) {
+    const screen = this._getCanvasScreenCoordinates(event);
+    const world = this.cameraController.screenToWorld(screen.x, screen.y);
+    return this._convertWorldToCellCoordinates(world);
+  }
+
+  _getCanvasScreenCoordinates(event) {
+    const rect = this.pixiApp.canvas.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  }
+
+  _convertWorldToCellCoordinates(world) {
+    const cellSize = this.appManager.mapData.cellSize || 16;
+    return { x: Math.floor(world.x / cellSize), y: Math.floor(world.y / cellSize), z: 0 };
+  }
+
+  _removeToolPointerEvents() {
+    if (!this.pixiApp) return;
+    this._removeCanvasPointerDownListener();
+    this._removeWindowPointerListeners();
+    this._toolPointerDown = false;
+  }
+
+  _removeCanvasPointerDownListener() {
+    this.pixiApp.canvas.removeEventListener('pointerdown', this._onCanvasPointerDown);
+  }
+
+  _removeWindowPointerListeners() {
+    window.removeEventListener('pointermove', this._onToolPointerMove);
+    window.removeEventListener('pointerup', this._onToolPointerUp);
   }
 
   _createPixiConfiguration() {
@@ -146,6 +225,7 @@ class Renderer2D extends AppObject {
       (window.innerWidth - width * scale) / 2,
       (window.innerHeight - height * scale) / 2
     );
+    if (this.cameraController) this.cameraController.zoomLevel = scale;
   }
 
   /**
@@ -216,9 +296,29 @@ class Renderer2D extends AppObject {
 
   _clearWorkspaceResources() {
     if (!this._ready || !this.pixiApp) return;
+    this._releaseWorkspaceInteraction();
+    this._removeWorkspaceCanvas();
+    this._disposePixiApplication();
+  }
+
+  _removeWorkspaceCanvas() {
     this._removeCanvasFromDOM();
+  }
+
+  _releaseWorkspaceInteraction() {
+    this._removeToolPointerEvents();
+    this._disposeCameraController();
+  }
+
+  _disposePixiApplication() {
     this.pixiApp.destroy(true, { children: true });
     this.pixiApp = null;
+  }
+
+  _disposeCameraController() {
+    if (!this.cameraController) return;
+    this.cameraController.onDestroy();
+    this.cameraController = null;
   }
 
   _removeCanvasFromDOM() {

@@ -1,89 +1,191 @@
 /**
  * AppObject.js
- * Componente base estructural y contractual del ciclo de vida de la aplicación.
- * Refactorizado bajo la regla estricta de un máximo de 3 subtareas por método.
+ * Clase base para objetos administrados por AppManager.
+ * Proporciona ciclo de vida, acceso al contexto y utilidades compartidas.
  */
 class AppObject {
-  /**
-   * @param {object} appManager Referencia única al orquestador central.
-   */
   constructor(appManager) {
+    if (!appManager) throw new Error('AppObject requiere una instancia de AppManager.');
     this.appManager = appManager;
     this.active = true;
+    this.destroyed = false;
   }
-  
-  /** Ganchos virtuales del ciclo de vida de la infraestructura */
-  onInit() {}
-  
-  onUpdate(dt) {}
-  
-  onDestroy() {}
 
   // ---------------------------------------------------------------------
-  // Métodos Generales de Control de Estado Estructural
+  // Contrato de ciclo de vida
   // ---------------------------------------------------------------------
 
-  /** Modifica de forma segura la bandera de activación lúdica. */
+  onInit() { }
+
+  onUpdate(dt) { }
+
+  onDestroy() { }
+
+  isActive() {
+    return this.active && !this.destroyed;
+  }
+
   setActiveState(isActive) {
-    this.active = isActive;
+    if (this.destroyed) return false;
+    this.active = Boolean(isActive);
+    return this.active;
   }
 
-  /** Invoca una auto-destrucción y des-registro seguro desde el gestor central. */
+  activate() {
+    return this.setActiveState(true);
+  }
+
+  deactivate() {
+    return this.setActiveState(false);
+  }
+
+  toggleActiveState() {
+    return this.setActiveState(!this.active);
+  }
+
+  /** Destrucción segura; AppManager centraliza onDestroy y el desregistro. */
   selfDestroy() {
-    this._triggerDestructionLifecycle();
-    this._unregisterFromAppManager();
+    return this.unregisterSelf();
   }
 
-  /** @private */
-  _triggerDestructionLifecycle() {
+  destroy() {
+    return this.selfDestroy();
+  }
+
+  unregisterSelf() {
+    if (this.destroyed) return false;
+    return this.appManager.unregister(this);
+  }
+
+  /** @internal Invocado exclusivamente por AppManager.unregister(). */
+  _destroyFromManager() {
+    if (this.destroyed) return false;
+    this.destroyed = true;
+    this.active = false;
     this.onDestroy();
-  }
-
-  /** @private */
-  _unregisterFromAppManager() {
-    this.appManager.unregister(this);
+    return true;
   }
 
   // ---------------------------------------------------------------------
-  // Métodos Generales de Atajos de Consulta de Datos (MapData)
+  // Acceso genérico al contexto de la aplicación
   // ---------------------------------------------------------------------
 
-  /** Retorna el búfer de datos lógicos asignado al proyecto activo. */
+  getAppManager() {
+    return this.appManager;
+  }
+
   getMapData() {
     return this.appManager.mapData;
   }
 
-  /** Determina de forma atómica si el entorno del buffer opera bajo topología 3D. */
-  isProjectMode3D() {
-    return this.appManager.mode === '3d';
+  hasMapData() {
+    return Boolean(this.getMapData());
   }
 
-  /** Retorna el identificador del modo dimensional activo ('2d' o '3d'). */
   getProjectMode() {
     return this.appManager.mode;
   }
 
+  isProjectMode(mode) {
+    return this.getProjectMode() === mode;
+  }
+
+  isProjectMode2D() {
+    return this.isProjectMode('2d');
+  }
+
+  isProjectMode3D() {
+    return this.isProjectMode('3d');
+  }
+
+  hasProject() {
+    return this.appManager.hasProject();
+  }
+
   // ---------------------------------------------------------------------
-  // Métodos Generales de Acceso al Ecosistema de Sub-motores
+  // Acceso genérico a servicios y objetos registrados
   // ---------------------------------------------------------------------
 
-  /** Retorna la referencia activa al motor de deformación y escultura litológica. */
   getModificationEngine() {
     return this.appManager.destructionEngine;
   }
 
-  /** Retorna la instancia del motor gráfico (Renderer2D o Renderer3D) en ejecución. */
   getActiveRenderer() {
     return this.appManager.renderer;
   }
 
-  /** Retorna el gestor de herramientas procedurales centralizado. */
   getToolsManager() {
     return this.appManager.toolsManager;
   }
 
-  /** Retorna el gestor de ventanas de la interfaz gráfica. */
   getWindowsManager() {
     return this.appManager.windowsManager;
+  }
+
+  getRegisteredObjects() {
+    return this.appManager.objects.slice();
+  }
+
+  findAppObject(predicate) {
+    if (typeof predicate !== 'function') return null;
+    return this.appManager.objects.find(predicate) ?? null;
+  }
+
+  findAppObjects(predicate) {
+    if (typeof predicate !== 'function') return [];
+    return this.appManager.objects.filter(predicate);
+  }
+
+  registerAppObject(appObject) {
+    return this.appManager.register(appObject);
+  }
+
+  unregisterAppObject(appObject) {
+    return this.appManager.unregister(appObject);
+  }
+
+  // ---------------------------------------------------------------------
+  // Notificaciones genéricas al renderer activo
+  // ---------------------------------------------------------------------
+
+  requestFullRender() {
+    const context = this._getFullRenderContext();
+    if (!context) return false;
+    return this._invokeFullRender(context);
+  }
+
+  _getFullRenderContext() {
+    const renderer = this.getActiveRenderer();
+    const mapData = this.getMapData();
+    if (!renderer || !mapData) return null;
+    return { renderer, mapData };
+  }
+
+  _invokeFullRender({ renderer, mapData }) {
+    const methodName = this._resolveFullRenderMethod(renderer);
+    if (!methodName) return false;
+    renderer[methodName](mapData);
+    return true;
+  }
+
+  _resolveFullRenderMethod(renderer) {
+    if (typeof renderer.renderFullMap === 'function') return 'renderFullMap';
+    if (typeof renderer.renderFullMap3D === 'function') return 'renderFullMap3D';
+    return null;
+  }
+
+  requestChunkRebuild(chunkX, chunkY, chunkZ) {
+    const context = this._getChunkRenderContext();
+    if (!context) return false;
+    context.renderer.rebuildChunk(context.mapData, chunkX, chunkY, chunkZ);
+    return true;
+  }
+
+  _getChunkRenderContext() {
+    if (!this.isProjectMode3D()) return null;
+    const renderer = this.getActiveRenderer();
+    const mapData = this.getMapData();
+    if (!renderer || !mapData || typeof renderer.rebuildChunk !== 'function') return null;
+    return { renderer, mapData };
   }
 }

@@ -142,8 +142,8 @@ class CellularAutomata {
   static _writeAirVoxel(mapData2D, x, y) {
     if (typeof setCell2D === "function") {
       setCell2D(mapData2D, x, y, 0);
-    } else if (mapData2D.data) {
-      mapData2D.data[y * mapData2D.width + x] = 0;
+      return;
     }
+    if (mapData2D.data) mapData2D.data[y * mapData2D.width + x] = 0;
   }
 }

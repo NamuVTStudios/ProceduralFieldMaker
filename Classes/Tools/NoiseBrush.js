@@ -1,167 +1,203 @@
 /**
  * NoiseBrush.js
- * Herramienta de escultura dinámica y texturizado de roca mediante inyección de ruido.
- * La presión del cursor (Pointer Events) modula la amplitud del ruido fractal.
- * Hereda de la clase base Tools.
+ * Herramienta de escultura dinámica mediante ruido fractal 2D y Perlin 3D.
+ * La presión de Pointer Events modula la amplitud. Todos los recorridos son planos.
  */
-import { Tools } from '../Base/Tools.js';
-import { NoiseGenerator } from '../Map/Generators/NoiseGenerator.js';
+const NOISE_BRUSH_DEFAULTS = {
+  radius: 4,
+  frequency: 0.15,
+  baseAmplitude: 1,
+  resistanceThreshold: 0.2,
+  selectedMaterialId: 3,
+  defaultPressureFallback: 0.5,
+};
 
-export class NoiseBrush extends Tools {
-  /**
-   * @param {object} appManager Instancia global del AppManager
-   */
+class NoiseBrush extends Tools {
   constructor(appManager) {
     super(appManager);
-
     this.name = 'NoiseBrush';
-    this.radius = 4;
-    this.frequency = 0.15;
-    this.baseAmplitude = 1.0;
-    this.resistanceThreshold = 0.2; // Umbral de corte para inyectar masa
-    this.selectedMaterialId = 3;    // ID del material a inyectar (ej. Roca)
-
-    this.defaultPressureFallback = 0.5;
+    this.label = 'Noise Brush';
+    Object.assign(this, NOISE_BRUSH_DEFAULTS);
     this.isDrawing = false;
   }
 
-  /**
-   * Se dispara al presionar el cursor sobre el lienzo.
-   * @param {PointerEvent} event
-   * @param {object} worldCoords Coordenadas transformadas del mundo {x, y, z}
-   */
   onPointerDown(event, worldCoords) {
     this.isDrawing = true;
     this.applyBrush(event, worldCoords);
   }
 
-  /**
-   * Se dispara al mover el cursor con el botón apretado.
-   * @param {PointerEvent} event
-   * @param {object} worldCoords Coordenadas transformadas del mundo {x, y, z}
-   */
   onPointerMove(event, worldCoords) {
     if (!this.isDrawing) return;
     this.applyBrush(event, worldCoords);
   }
 
-  /**
-   * Se dispara al soltar el clic o levantar el lápiz.
-   */
   onPointerUp() {
     this.isDrawing = false;
   }
 
-  /**
-   * Aplica la inyección de ruido según el modo activo (2D o 3D).
-   * @param {PointerEvent} event
-   * @param {object} coords {x, y, z}
-   */
   applyBrush(event, coords) {
     const mapData = this.appManager.mapData;
-    if (!mapData) return;
-
-    // Modulación por presión de Pointer Events (TDD sección 6.3)
-    const pressure = (event && event.pressure > 0)
-      ? event.pressure
-      : this.defaultPressureFallback;
-
-    const modulatedAmplitude = this.baseAmplitude * pressure;
-
-    if (this.appManager.mode === '2d') {
-      this._apply2D(mapData, Math.floor(coords.x), Math.floor(coords.y), modulatedAmplitude);
-    } else {
-      this._apply3D(mapData, Math.floor(coords.x), Math.floor(coords.y), Math.floor(coords.z ?? 0), modulatedAmplitude);
-    }
+    if (!mapData || !coords) return;
+    const amplitude = this.baseAmplitude * this._resolvePressure(event);
+    const center = this._normalizeCoordinates(coords);
+    this._applyByProjectMode(mapData, center, amplitude);
   }
 
-  /**
-   * Inyección de ruido en modo 2D (corte estratigráfico).
-   * @private
-   */
+  _resolvePressure(event) {
+    if (event && event.pressure > 0) return event.pressure;
+    return this.defaultPressureFallback;
+  }
+
+  _normalizeCoordinates(coords) {
+    return {
+      x: Math.floor(coords.x),
+      y: Math.floor(coords.y),
+      z: Math.floor(coords.z ?? 0),
+    };
+  }
+
+  _applyByProjectMode(mapData, center, amplitude) {
+    if (this.appManager.mode === '2d') {
+      this._apply2D(mapData, center.x, center.y, amplitude);
+      return;
+    }
+    this._apply3D(mapData, center.x, center.y, center.z, amplitude);
+  }
+
   _apply2D(mapData, centerX, centerY, amplitude) {
     const noise = new NoiseGenerator(mapData.seedHash);
-    const r = Math.ceil(this.radius);
+    const radius = Math.ceil(this.radius);
+    const context = { mapData, centerX, centerY, amplitude, radius, noise };
+    this._scan2DRows(context);
+  }
 
-    for (let dy = -r; dy <= r; dy++) {
-      for (let dx = -r; dx <= r; dx++) {
-        // Comprobar si está dentro del radio circular del pincel
-        if (dx * dx + dy * dy > this.radius * this.radius) continue;
-
-        const targetX = centerX + dx;
-        const targetY = centerY + dy;
-
-        // Fuera de límites
-        if (targetX < 0 || targetX >= mapData.width || targetY < 0 || targetY >= mapData.height) {
-          continue;
-        }
-
-        // Evaluar ruido fractal en la coordenada
-        const noiseVal = noise.fbm2D(targetX * this.frequency, targetY * this.frequency, 3) * amplitude;
-
-        if (noiseVal > this.resistanceThreshold) {
-          setCell2D(mapData, targetX, targetY, this.selectedMaterialId);
-        }
-      }
+  _scan2DRows(context) {
+    for (let dy = -context.radius; dy <= context.radius; dy++) {
+      this._scan2DRow(context, dy);
     }
   }
 
-  /**
-   * Inyección de ruido volumétrico en modo 3D.
-   * @private
-   */
+  _scan2DRow(context, dy) {
+    for (let dx = -context.radius; dx <= context.radius; dx++) {
+      this._process2DOffset(context, dx, dy);
+    }
+  }
+
+  _process2DOffset(context, dx, dy) {
+    if (!this._isInside2DBrush(dx, dy)) return;
+    const targetX = context.centerX + dx;
+    const targetY = context.centerY + dy;
+    if (!this._isInside2DMap(context.mapData, targetX, targetY)) return;
+    this._inject2DMaterial(context, targetX, targetY);
+  }
+
+  _isInside2DBrush(dx, dy) {
+    return dx * dx + dy * dy <= this.radius * this.radius;
+  }
+
+  _isInside2DMap(mapData, x, y) {
+    return x >= 0 && x < mapData.width && y >= 0 && y < mapData.height;
+  }
+
+  _inject2DMaterial(context, x, y) {
+    const noiseValue = context.noise.fbm2D(x * this.frequency, y * this.frequency, 3) * context.amplitude;
+    if (noiseValue <= this.resistanceThreshold) return;
+    setCell2D(context.mapData, x, y, this.selectedMaterialId);
+  }
+
   _apply3D(mapData, centerX, centerY, centerZ, amplitude) {
-    const noise = new NoiseGenerator(mapData.seedHash);
-    const r = Math.ceil(this.radius);
+    const context = this._create3DContext(mapData, centerX, centerY, centerZ, amplitude);
+    this._scan3DDepth(context);
+    this._rebuildDirtyChunks(context);
+  }
 
-    // Chunks afectados para marcarlos como sucios y reconstruirlos
-    const dirtyChunks = new Set();
-    const chunkSize = mapData.chunkSize || 16;
+  _create3DContext(mapData, centerX, centerY, centerZ, amplitude) {
+    return {
+      mapData,
+      centerX,
+      centerY,
+      centerZ,
+      amplitude,
+      radius: Math.ceil(this.radius),
+      radiusSquared: this.radius * this.radius,
+      noise: new NoiseGenerator(mapData.seedHash),
+      chunkSize: mapData.chunkSize || 16,
+      dirtyChunks: new Set(),
+    };
+  }
 
-    for (let dz = -r; dz <= r; dz++) {
-      for (let dy = -r; dy <= r; dy++) {
-        for (let dx = -r; dx <= r; dx++) {
-          // Comprobar radio esférico
-          if (dx * dx + dy * dy + dz * dz > this.radius * this.radius) continue;
-
-          const targetX = centerX + dx;
-          const targetY = centerY + dy;
-          const targetZ = centerZ + dz;
-
-          if (
-            targetX < 0 || targetX >= mapData.sizeX ||
-            targetY < 0 || targetY >= mapData.sizeY ||
-            targetZ < 0 || targetZ >= mapData.sizeZ
-          ) {
-            continue;
-          }
-
-          const noiseVal = noise.perlin3D(
-            targetX * this.frequency,
-            targetY * this.frequency,
-            targetZ * this.frequency
-          ) * amplitude;
-
-          if (noiseVal > this.resistanceThreshold) {
-            setVoxel3D(mapData, targetX, targetY, targetZ, this.selectedMaterialId);
-
-            // Registrar chunk afectado para remallar
-            const cx = Math.floor(targetX / chunkSize);
-            const cy = Math.floor(targetY / chunkSize);
-            const cz = Math.floor(targetZ / chunkSize);
-            dirtyChunks.add(`${cx},${cy},${cz}`);
-          }
-        }
-      }
+  _scan3DDepth(context) {
+    for (let dz = -context.radius; dz <= context.radius; dz++) {
+      this._scan3DPlane(context, dz);
     }
+  }
 
-    // Si el renderer 3D está activo, reconstruir solo los chunks modificados
-    const renderer3D = this.appManager.objects.find(obj => obj.rebuildChunk);
-    if (renderer3D) {
-      for (const key of dirtyChunks) {
-        const [cx, cy, cz] = key.split(',').map(Number);
-        renderer3D.rebuildChunk(mapData, cx, cy, cz);
-      }
+  _scan3DPlane(context, dz) {
+    for (let dy = -context.radius; dy <= context.radius; dy++) {
+      this._scan3DRow(context, dy, dz);
     }
+  }
+
+  _scan3DRow(context, dy, dz) {
+    for (let dx = -context.radius; dx <= context.radius; dx++) {
+      this._process3DOffset(context, dx, dy, dz);
+    }
+  }
+
+  _process3DOffset(context, dx, dy, dz) {
+    if (!this._isInside3DBrush(dx, dy, dz, context.radiusSquared)) return;
+    const target = this._get3DTarget(context, dx, dy, dz);
+    if (!this._isInside3DMap(context.mapData, target)) return;
+    this._inject3DMaterial(context, target);
+  }
+
+  _isInside3DBrush(dx, dy, dz, radiusSquared) {
+    return dx * dx + dy * dy + dz * dz <= radiusSquared;
+  }
+
+  _get3DTarget(context, dx, dy, dz) {
+    return { x: context.centerX + dx, y: context.centerY + dy, z: context.centerZ + dz };
+  }
+
+  _isInside3DMap(mapData, target) {
+    return target.x >= 0 && target.x < mapData.sizeX &&
+      target.y >= 0 && target.y < mapData.sizeY &&
+      target.z >= 0 && target.z < mapData.sizeZ;
+  }
+
+  _inject3DMaterial(context, target) {
+    const noiseValue = context.noise.perlin3D(
+      target.x * this.frequency,
+      target.y * this.frequency,
+      target.z * this.frequency,
+    ) * context.amplitude;
+    if (noiseValue <= this.resistanceThreshold) return;
+    setVoxel3D(context.mapData, target.x, target.y, target.z, this.selectedMaterialId);
+    this._markDirtyChunk(context, target);
+  }
+
+  _markDirtyChunk(context, target) {
+    const chunkX = Math.floor(target.x / context.chunkSize);
+    const chunkY = Math.floor(target.y / context.chunkSize);
+    const chunkZ = Math.floor(target.z / context.chunkSize);
+    context.dirtyChunks.add(`${chunkX},${chunkY},${chunkZ}`);
+  }
+
+  _rebuildDirtyChunks(context) {
+    const renderer = this._get3DRenderer();
+    if (!renderer || typeof renderer.rebuildChunk !== 'function') return;
+    for (const key of context.dirtyChunks) {
+      this._rebuildChunkFromKey(renderer, context.mapData, key);
+    }
+  }
+
+  _get3DRenderer() {
+    if (this.appManager.renderer) return this.appManager.renderer;
+    return this.appManager.objects.find(object => typeof object.rebuildChunk === 'function') || null;
+  }
+
+  _rebuildChunkFromKey(renderer, mapData, key) {
+    const [chunkX, chunkY, chunkZ] = key.split(',').map(Number);
+    renderer.rebuildChunk(mapData, chunkX, chunkY, chunkZ);
   }
 }

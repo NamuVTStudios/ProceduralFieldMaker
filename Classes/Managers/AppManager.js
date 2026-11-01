@@ -36,14 +36,57 @@ class AppManager {
     }
 
     register(appObject) {
-        this.objects.push(appObject);
-        appObject.onInit();
+        this._assertObjectCanRegister(appObject);
+        return this._registerIfNeeded(appObject);
+    }
+
+    _registerIfNeeded(appObject) {
+        if (this._isAlreadyRegistered(appObject)) return appObject;
+        this._addRegisteredObject(appObject);
+        this._initializeRegisteredObject(appObject);
         return appObject;
     }
 
+    _isAlreadyRegistered(appObject) {
+        return this.objects.includes(appObject);
+    }
+
+    _assertObjectCanRegister(appObject) {
+        if (!appObject || typeof appObject.onInit !== 'function' || typeof appObject.onDestroy !== 'function') {
+            throw new TypeError('AppManager solo registra objetos con contrato de ciclo de vida.');
+        }
+        if (appObject.destroyed) throw new Error('No se puede registrar un AppObject destruido.');
+    }
+
+    _addRegisteredObject(appObject) {
+        this.objects.push(appObject);
+    }
+
+    _initializeRegisteredObject(appObject) {
+        appObject.onInit();
+    }
+
     unregister(appObject) {
+        if (!this._isRegistered(appObject)) return false;
+        this._removeRegisteredObject(appObject);
+        this._destroyRegisteredObject(appObject);
+        return true;
+    }
+
+    _isRegistered(appObject) {
+        return this.objects.includes(appObject);
+    }
+
+    _removeRegisteredObject(appObject) {
+        this.objects = this.objects.filter(object => object !== appObject);
+    }
+
+    _destroyRegisteredObject(appObject) {
+        if (typeof appObject._destroyFromManager === 'function') {
+            appObject._destroyFromManager();
+            return;
+        }
         appObject.onDestroy();
-        this.objects = this.objects.filter(o => o !== appObject);
     }
 
     update(dt) {
@@ -53,7 +96,9 @@ class AppManager {
     }
 
     verifyObjects(obj, dt) {
-        if (obj.active) obj.onUpdate(dt);
+        if (typeof obj.isActive === 'function' && !obj.isActive()) return;
+        if (!obj.active) return;
+        obj.onUpdate(dt);
     }
 
     /** Avisa al renderer activo que cambió el tamaño de la ventana (si lo necesita). */

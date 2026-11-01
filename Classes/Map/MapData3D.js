@@ -25,13 +25,13 @@ function getVoxelIndex3D(mapData3D, x, y, z) {
 }
 
 function getVoxel3D(mapData3D, x, y, z) {
-  if (this._isOutOfBounds3D(mapData3D, x, y, z)) return AIR_MATERIAL_ID;
+  if (_isOutOfBounds3D(mapData3D, x, y, z)) return AIR_MATERIAL_ID;
   const idx = getVoxelIndex3D(mapData3D, x, y, z);
   return mapData3D.voxels[idx];
 }
 
 function setVoxel3D(mapData3D, x, y, z, materialId) {
-  if (this._isOutOfBounds3D(mapData3D, x, y, z)) return;
+  if (_isOutOfBounds3D(mapData3D, x, y, z)) return;
   const idx = getVoxelIndex3D(mapData3D, x, y, z);
   mapData3D.voxels[idx] = materialId;
 }

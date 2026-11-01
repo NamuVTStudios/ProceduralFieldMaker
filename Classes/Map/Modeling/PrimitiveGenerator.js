@@ -41,10 +41,25 @@ class PrimitiveGenerator {
   }
 
   static rasterizePrimitive(mapData3D, primitiveType, params, materialId, renderer3D = null) {
+    if (!mapData3D || !params) return;
+    const context = this._createRasterizationContext(mapData3D, primitiveType, params);
+    this._applyRasterizationAndRebuild(mapData3D, primitiveType, params, materialId, renderer3D, context);
+  }
+
+  static _applyRasterizationAndRebuild(mapData3D, type, params, materialId, renderer3D, context) {
+    this._loopPrimitiveVolume(mapData3D, type, params, context.bounds, materialId, context.dirtyChunks);
+    this._rebuildSelectiveChunks(mapData3D, context.dirtyChunks, renderer3D);
+  }
+
+  static _createRasterizationContext(mapData3D, primitiveType, params) {
+    this._assertPrimitiveType(primitiveType);
     const bounds = this._getPrimitiveBounds(primitiveType, params, mapData3D);
-    const dirtyChunks = new Set();
-    this._loopPrimitiveVolume(mapData3D, primitiveType, params, bounds, materialId, dirtyChunks);
-    this._rebuildSelectiveChunks(mapData3D, dirtyChunks, renderer3D);
+    return { bounds, dirtyChunks: new Set() };
+  }
+
+  static _assertPrimitiveType(type) {
+    const supportedTypes = ['sphere', 'box', 'cylinder', 'torus'];
+    if (!supportedTypes.includes(type)) throw new Error(`Tipo de primitiva no reconocido: ${type}`);
   }
 
   static _getPrimitiveBounds(type, p, mapData) {
@@ -94,6 +109,10 @@ class PrimitiveGenerator {
   static _evaluatePrimitiveVoxel(mapData3D, type, params, x, y, z, materialId, dirtyChunks) {
     const dist = this._resolveSdfDistance(type, params, x, y, z);
     if (dist > 0) return;
+    this._writePrimitiveVoxel(mapData3D, x, y, z, materialId, dirtyChunks);
+  }
+
+  static _writePrimitiveVoxel(mapData3D, x, y, z, materialId, dirtyChunks) {
     setVoxel3D(mapData3D, x, y, z, materialId);
     this._markChunkDirty(x, y, z, mapData3D.chunkSize || 16, dirtyChunks);
   }

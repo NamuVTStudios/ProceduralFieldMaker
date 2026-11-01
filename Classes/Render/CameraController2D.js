@@ -31,6 +31,7 @@ class CameraController2D extends AppObject {
     this._onPointerMove = this._onPointerMove.bind(this);
     this._onPointerUp = this._onPointerUp.bind(this);
     this._onWheel = this._onWheel.bind(this);
+    this._onContextMenu = (event) => event.preventDefault();
   }
 
   onInit() {
@@ -43,7 +44,7 @@ class CameraController2D extends AppObject {
     window.addEventListener('pointermove', this._onPointerMove);
     window.addEventListener('pointerup', this._onPointerUp);
     this.canvas.addEventListener('wheel', this._onWheel, { passive: false });
-    this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    this.canvas.addEventListener('contextmenu', this._onContextMenu);
   }
 
   screenToWorld(screenX, screenY) {
@@ -52,9 +53,11 @@ class CameraController2D extends AppObject {
   }
 
   _calculateWorldPosition(sX, sY) {
+    const scaleX = this.worldContainer.scale.x || this.zoomLevel;
+    const scaleY = this.worldContainer.scale.y || this.zoomLevel;
     return {
-      x: (sX - this.worldContainer.position.x) / this.zoomLevel,
-      y: (sY - this.worldContainer.position.y) / this.zoomLevel
+      x: (sX - this.worldContainer.position.x) / scaleX,
+      y: (sY - this.worldContainer.position.y) / scaleY
     };
   }
 
@@ -141,5 +144,6 @@ class CameraController2D extends AppObject {
     window.removeEventListener('pointermove', this._onPointerMove);
     window.removeEventListener('pointerup', this._onPointerUp);
     this.canvas.removeEventListener('wheel', this._onWheel);
+    this.canvas.removeEventListener('contextmenu', this._onContextMenu);
   }
 }

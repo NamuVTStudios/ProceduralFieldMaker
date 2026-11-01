@@ -59,10 +59,19 @@ class BezierPath3D {
   }
 
   rasterizeExtrusion(mapData3D, radius, materialId = 0, renderer3D = null) {
-    const steps = this._calculateExtrusionSteps();
-    const dirtyChunks = new Set();
-    this._loopExtrusionSteps(steps, radius, materialId, mapData3D, dirtyChunks);
-    this._rebuildSelectiveChunks(mapData3D, dirtyChunks, renderer3D);
+    if (!mapData3D) return;
+    const context = this._createExtrusionContext(mapData3D, radius);
+    this._applyExtrusionAndRebuild(mapData3D, materialId, renderer3D, context);
+  }
+
+  _applyExtrusionAndRebuild(mapData3D, materialId, renderer3D, context) {
+    this._loopExtrusionSteps(context.steps, context.radius, materialId, mapData3D, context.dirtyChunks);
+    this._rebuildSelectiveChunks(mapData3D, context.dirtyChunks, renderer3D);
+  }
+
+  _createExtrusionContext(mapData3D, radius) {
+    const safeRadius = Math.max(0, Number(radius) || 0);
+    return { steps: this._calculateExtrusionSteps(), radius: safeRadius, dirtyChunks: new Set() };
   }
 
   _calculateExtrusionSteps() {
@@ -114,10 +123,18 @@ class BezierPath3D {
   }
 
   _evaluateStepVoxel(center, x, y, z, rSq, materialId, mapData3D, dirtyChunks) {
+    if (this._getDistanceSquared(center, x, y, z) > rSq) return;
+    this._writeExtrusionVoxel(mapData3D, x, y, z, materialId, dirtyChunks);
+  }
+
+  _getDistanceSquared(center, x, y, z) {
     const dx = x - center.x;
     const dy = y - center.y;
     const dz = z - center.z;
-    if (dx * dx + dy * dy + dz * dz > rSq) return;
+    return dx * dx + dy * dy + dz * dz;
+  }
+
+  _writeExtrusionVoxel(mapData3D, x, y, z, materialId, dirtyChunks) {
     setVoxel3D(mapData3D, x, y, z, materialId);
     this._markChunkAsDirty(x, y, z, mapData3D.chunkSize || 16, dirtyChunks);
   }

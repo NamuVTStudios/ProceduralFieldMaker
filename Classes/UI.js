@@ -66,6 +66,8 @@ class UI {
     _buildCanvas3D() {
         this.renderCanvas3D = this._el('canvas', 'ui-viewport ui-hidden');
         this.renderCanvas3D.id = 'renderCanvas';
+        this.renderCanvas3D.setAttribute('aria-label', 'Lienzo tridimensional');
+        this.renderCanvas3D.tabIndex = 0;
         document.body.appendChild(this.renderCanvas3D);
     }
 
