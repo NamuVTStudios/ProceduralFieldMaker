@@ -43,11 +43,7 @@ El mundo no proviene de activos prerrenderizados ni de modelos estáticos, sino 
 
 ## Herramientas de Edición y Destrucción (Toolset)
 
-Por tratarse de un editor destructivo, se recomienda incorporar un sistema de historial de operaciones. Las modificaciones de terreno deberían poder representarse como comandos reversibles:
-
-`CommandHistory → execute(command) → undo() / redo()`
-
-La implementación puede quedar fuera del primer prototipo, pero la arquitectura debe evitar impedirla posteriormente.
+El editor incorpora un historial de operaciones reversible compartido por los modos 2D y 3D. Los trazos, filtros y operaciones de capas permiten Deshacer/Rehacer desde la interfaz o mediante atajos de teclado (`Ctrl/Cmd+Z`, `Ctrl/Cmd+Y` y `Ctrl/Cmd+Shift+Z`). El historial utiliza snapshots limitados en memoria y se reinicia al cambiar de proyecto.
 
 ### Herramientas Base
 

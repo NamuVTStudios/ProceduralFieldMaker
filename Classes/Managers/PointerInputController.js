@@ -37,8 +37,13 @@ class PointerInputController {
 
   _startPointer(event) {
     this.activePointerId = event.pointerId;
+    this._beginHistoryTransaction();
     this._capturePointer(event);
     this._dispatch('onPointerDown', event);
+  }
+
+  _beginHistoryTransaction() {
+    this._getHistoryManager()?.beginHistoryTransaction('Trazo');
   }
 
   _capturePointer(event) {
@@ -59,15 +64,37 @@ class PointerInputController {
 
   _handlePointerCancel(event) {
     if (!this._isActivePointer(event)) return;
-    this._finishPointer(event);
+    this._cancelPointer(event);
   }
 
   _finishPointer(event) {
     try {
       this._dispatch('onPointerUp', event, null);
     } finally {
+      this._endHistoryTransaction();
       this._releasePointer(event);
     }
+  }
+
+  _endHistoryTransaction() {
+    this._getHistoryManager()?.endHistoryTransaction();
+  }
+
+  _cancelHistoryTransaction() {
+    this._getHistoryManager()?.cancelHistoryTransaction();
+  }
+
+  _cancelPointer(event) {
+    try {
+      this._dispatch('onPointerUp', event, null);
+    } finally {
+      this._cancelHistoryTransaction();
+      this._releasePointer(event);
+    }
+  }
+
+  _getHistoryManager() {
+    return this.toolsManager.appManager?.mapLayerManager || null;
   }
 
   _isActivePointer(event) {
@@ -107,6 +134,7 @@ class PointerInputController {
     try {
       this.toolsManager.dispatchPointer('onPointerUp', null, null);
     } finally {
+      this._endHistoryTransaction();
       this._releasePointerCapture(pointerId);
       this.activePointerId = null;
     }

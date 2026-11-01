@@ -87,10 +87,18 @@ class CellularAutomata {
   }
 
   static _applyCellularState(currentState, neighbors, config) {
-    if (currentState === 1) {
-      return neighbors >= config.deathLimit ? 1 : 0;
-    }
-    return neighbors > config.birthLimit ? 1 : 0;
+    if (currentState === 1) return this._resolveSurvivalState(neighbors, config.deathLimit);
+    return this._resolveBirthState(neighbors, config.birthLimit);
+  }
+
+  static _resolveSurvivalState(neighbors, deathLimit) {
+    if (neighbors >= deathLimit) return 1;
+    return 0;
+  }
+
+  static _resolveBirthState(neighbors, birthLimit) {
+    if (neighbors > birthLimit) return 1;
+    return 0;
   }
 
   static _countAliveNeighbors(grid, width, height, cellX, cellY) {

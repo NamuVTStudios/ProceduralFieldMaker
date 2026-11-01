@@ -11,6 +11,7 @@ class UI {
         this.selectedMaterialId = 2;
         this.filterMode = 'destructive';
         this.layerPanelVisible = true;
+        this.isLayerOpacityTransactionOpen = false;
         this._buildInitialView();
         this._bindResizeEvents();
     }
@@ -39,6 +40,13 @@ class UI {
 
     _bindResizeEvents() {
         window.addEventListener('resize', () => this._onResize());
+        this._bindLayerOpacityTransactionEvents();
+    }
+
+    _bindLayerOpacityTransactionEvents() {
+        window.addEventListener('pointerup', () => this._endLayerOpacityTransaction());
+        window.addEventListener('pointercancel', () => this._cancelLayerOpacityTransaction());
+        window.addEventListener('blur', () => this._endLayerOpacityTransaction());
     }
 
     _el(tag, className = '', text) {
@@ -379,15 +387,33 @@ class UI {
     }
 
     _populateActionSection(section) {
+        this._appendHistoryControls(section);
         this._appendFilterActions(section);
         this._appendLayerActions(section);
         this._appendWorkspaceActions(section);
     }
 
+    _appendHistoryControls(section) {
+        const controls = this._el('div', 'ui-history-controls');
+        this.undoButton = this._appendActionButton(controls, '↶ Deshacer', 'ui-action-button ui-history-button', () => this.appManager.undo());
+        this.redoButton = this._appendActionButton(controls, '↷ Rehacer', 'ui-action-button ui-history-button', () => this.appManager.redo());
+        section.appendChild(controls);
+        this.refreshHistoryControls();
+    }
+
+    refreshHistoryControls() {
+        if (!this.undoButton || !this.redoButton) return;
+        const manager = this.appManager.mapLayerManager;
+        this.undoButton.disabled = !manager?.canUndo?.();
+        this.redoButton.disabled = !manager?.canRedo?.();
+        this.undoButton.title = 'Deshacer (Ctrl+Z)';
+        this.redoButton.title = 'Rehacer (Ctrl+Y o Ctrl+Shift+Z)';
+    }
+
     _appendFilterActions(section) {
         this._appendFilterModeControl(section);
         this._appendActionButton(section, 'Filtro Blur', 'ui-action-button', () => this._applyFilter('gaussian-blur', { kernelSize: 3 }));
-        this._appendActionButton(section, 'Umbral', 'ui-action-button', () => this._applyFilter('threshold', { threshold: 3, solidMaterialId: 3 }));
+        this._appendActionButton(section, 'Umbral', 'ui-action-button', () => this._applyThresholdFilter());
     }
 
     _appendFilterModeControl(section) {
@@ -445,6 +471,21 @@ class UI {
         button.addEventListener('click', callback);
         parent.appendChild(button);
         return button;
+    }
+
+
+    _applyThresholdFilter() {
+        const options = this._getThresholdFilterOptions();
+        return this._applyFilter('threshold', options);
+    }
+
+    _getThresholdFilterOptions() {
+        const layer = this.appManager.mapLayerManager?.getActiveLayer();
+        const materialId = Number(layer?.materialId);
+        const material = (this.appManager.mapData?.materials || []).find(item => item.id === materialId);
+        if (!material) return { threshold: 3, solidMaterialId: 3 };
+        const threshold = Number(material.density ?? material.hardness ?? 1);
+        return { threshold: Number.isFinite(threshold) ? threshold : 1, solidMaterialId: material.id };
     }
 
     _applyFilter(filterName, options) {
@@ -560,7 +601,9 @@ class UI {
         this.layerOpacityInput.min = '0';
         this.layerOpacityInput.max = '100';
         this.layerOpacityInput.step = '1';
+        this.layerOpacityInput.addEventListener('pointerdown', () => this._beginLayerOpacityTransaction());
         this.layerOpacityInput.addEventListener('input', () => this._updateActiveLayerOpacity());
+        this.layerOpacityInput.addEventListener('change', () => this._endLayerOpacityTransaction());
         return this.layerOpacityInput;
     }
 
@@ -758,6 +801,24 @@ class UI {
     _setLayerControlsEnabled(enabled) {
         this.layerOpacityInput.disabled = !enabled;
         this.layerBlendSelect.disabled = !enabled;
+    }
+
+    _beginLayerOpacityTransaction() {
+        if (this.isLayerOpacityTransactionOpen) return;
+        this.isLayerOpacityTransactionOpen = true;
+        this.appManager.mapLayerManager.beginHistoryTransaction('Cambiar opacidad de capa');
+    }
+
+    _endLayerOpacityTransaction() {
+        if (!this.isLayerOpacityTransactionOpen) return;
+        this.isLayerOpacityTransactionOpen = false;
+        this.appManager.mapLayerManager.endHistoryTransaction();
+    }
+
+    _cancelLayerOpacityTransaction() {
+        if (!this.isLayerOpacityTransactionOpen) return;
+        this.isLayerOpacityTransactionOpen = false;
+        this.appManager.mapLayerManager.cancelHistoryTransaction();
     }
 
     _updateActiveLayerOpacity() {

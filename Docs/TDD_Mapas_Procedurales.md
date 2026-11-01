@@ -391,9 +391,11 @@ function applyCloneStamp(mapData2D, sourceX, sourceY, targetX, targetY, radius) 
 
 El `Renderer2D`/`Renderer3D` siempre consume el `FinalBuffer` compuesto, nunca las capas individuales por separado.
 
-### 6.9 Historial de Operaciones (recomendado, fuera del primer prototipo)
+### 6.9 Historial de Operaciones (implementado)
 
-Por tratarse de un editor destructivo, las modificaciones de terreno deberían poder representarse como comandos reversibles (`CommandHistory → execute(command) → undo() / redo()`). La implementación puede quedar fuera del primer prototipo, pero la arquitectura no debe impedirla: las operaciones de `TerrainModificationEngine` deben devolver la región afectada y poder registrar el estado previo de esa región.
+`HistoryManager` registra snapshots reversibles de capas 2D/3D. Los trazos iniciados por Pointer Events forman una única transacción hasta soltar el puntero; las operaciones asíncronas de la Varita Mágica y los filtros mantienen su transacción hasta confirmar o cancelar el resultado. Las operaciones de capa y máscara también son reversibles.
+
+El historial ofrece `undo()` y `redo()`, botones de interfaz y atajos `Ctrl/Cmd+Z`, `Ctrl/Cmd+Y` y `Ctrl/Cmd+Shift+Z`. Mantiene hasta 30 acciones y un presupuesto aproximado de 64 MiB para snapshots. Al crear o cerrar un proyecto se descarta el historial para impedir restauraciones entre mapas distintos. Un nuevo cambio después de Deshacer elimina la rama de Rehacer.
 
 ---
 
@@ -561,7 +563,7 @@ ProceduralFieldMaker/
 - [x] Contextual navigation guide describing pan, orbit, zoom, and fly-camera controls.
 - [x] Visible orbit/fly camera toggle in 3D mode; `Tab` remains available when focus is not inside an interactive UI control.
 - [x] Layer panel with selection, visibility, creation, renaming, deletion, reordering, opacity, and blend modes.
-- [x] Procedural Field Maker square icon and horizontal wordmark assets in SVG and PNG; the previous `Assets/CURRENT LOGO.png` asset remains unchanged.
+- [x] Procedural Field Maker square icon and horizontal wordmark assets in SVG and PNG. Release ZIPs exclude `Assets/CURRENT LOGO.png`; `package-release.sh` keeps that exclusion for future packages.
 
 **Navigation controls:**
 - 2D: left mouse button edits; middle or right button + drag pans; mouse wheel zooms.
@@ -599,3 +601,29 @@ ProceduralFieldMaker/
 - [x] Los filtros no destructivos se almacenan como máscaras internas (`layer.masks`) y no como capas FX independientes. El panel permite activar/desactivar y eliminar cada máscara.
 - [x] `Renderer3D` resuelve el color de cada vóxel desde `mapData3D.materials[].color` y convierte el color hexadecimal a RGB para los vertex colors de Babylon.js.
 - [x] `Tools.prepareMaterialLayer()` se aplica en ambos modos, de modo que al cambiar de material en 3D también se crea una capa de material superior y se conserva la geometría/material anterior.
+
+
+## Correcciones de renderizado y filtrado 3D (actualización 2026-11-01)
+
+- El renderizador 3D activa los vertex colors en la malla (no solamente en el material) y establece un material neutro para que el color por vóxel no resulte negro.
+- Los cambios de una capa 3D detectan los vóxeles modificados y reconstruyen únicamente los chunks afectados, incluyendo chunks vecinos cuando la modificación coincide con un límite. Esto evita vaciar y reconstruir toda la escena durante cada movimiento del puntero.
+- El filtro Gaussiano conserva los voxels sólidos al seleccionar materiales no vacíos para centros ocupados y permite que la mayoría local cierre cavidades cuando el centro es aire; así evita borrar capas dispersas y sigue produciendo suavizado volumétrico.
+- El filtro Umbral selecciona por defecto el material de la capa de pintura activa cuando está disponible.
+- Los filtros destructivos y no destructivos siguen operando sobre buffers 3D; la salida no destructiva se conserva como máscara de la capa activa.
+- El filtro Umbral obtiene por defecto el umbral y el material de salida de la capa de pintura activa cuando esa capa tiene un material asignado.
+- Al aplicar un filtro destructivo, el resultado se hornea en el buffer de pintura y se eliminan las máscaras de filtro anteriores para evitar que una máscara antigua oculte el nuevo resultado.
+
+
+## 15. Historial de edición 2D/3D (actualización 2026-11-01)
+
+- [x] Historial común para mapas 2D y 3D basado en snapshots de las capas, buffers de pintura, máscaras, metadata y capa activa.
+- [x] Cada trazo Pointer Events se registra como una única acción al soltar el puntero; los movimientos intermedios no generan entradas independientes.
+- [x] La Varita Mágica mantiene la transacción abierta hasta que termina el Web Worker o su fallback local, de modo que una operación asíncrona se deshace como una sola acción.
+- [x] Los filtros destructivos y no destructivos se registran como acciones completas, incluyendo los buffers y las máscaras internas.
+- [x] Crear, eliminar, renombrar, reordenar, cambiar visibilidad/opacidad/modo de mezcla y activar/eliminar máscaras también se registra en el historial.
+- [x] La restauración recompone el mapa y actualiza el renderer completo, para que Undo/Redo funcione en el viewport 2D Pixi y en la escena 3D Babylon.
+- [x] Controles de interfaz `Deshacer` y `Rehacer`, además de `Ctrl+Z`, `Ctrl+Y` y `Ctrl+Shift+Z` (también `Cmd` en macOS).
+- [x] Historial limitado a 30 acciones y 64 MiB aproximados de snapshots retenidos para acotar el consumo de memoria. Un nuevo cambio después de Undo descarta la rama Redo.
+- [x] Los cambios de proyecto vacían el historial para impedir restaurar datos de un mapa anterior.
+
+**Empaquetado:** los ZIP de distribución no deben incluir `Assets/CURRENT LOGO.png`. La regla está en `.zipignore` y en el script `package-release.sh`.

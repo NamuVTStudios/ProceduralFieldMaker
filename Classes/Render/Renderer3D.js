@@ -303,6 +303,16 @@ class Renderer3D extends AppObject {
     this.renderFullMap3D(mapData3D);
   }
 
+  renderDirtyChunks(mapData3D, chunkKeys) {
+    if (!this.isInitialized || !mapData3D || !chunkKeys?.size) return;
+    for (const key of chunkKeys) this._rebuildChunkFromKey(mapData3D, key);
+  }
+
+  _rebuildChunkFromKey(mapData3D, key) {
+    const [chunkX, chunkY, chunkZ] = key.split('_').map(Number);
+    this.rebuildChunk(mapData3D, chunkX, chunkY, chunkZ);
+  }
+
   _iterateChunks(mapData3D) {
     const size = mapData3D.chunkSize || 16;
     const limits = this._calculateChunkLimits(mapData3D, size);
@@ -451,12 +461,21 @@ class Renderer3D extends AppObject {
   }
 
   _applyChunkMaterial(mesh, key) {
-    const material = new BABYLON.StandardMaterial(`mat_${key}`, this.scene);
-    material.backFaceCulling = true;
-    material.useVertexColors = true;
-    material.disableLighting = true;
+    mesh.useVertexColors = true;
+    mesh.hasVertexAlpha = false;
+    const material = this._createVertexColorMaterial(key);
     mesh.material = material;
     this.chunks.set(key, mesh);
+  }
+
+  _createVertexColorMaterial(key) {
+    const material = new BABYLON.StandardMaterial(`mat_${key}`, this.scene);
+    material.backFaceCulling = true;
+    material.disableLighting = true;
+    material.diffuseColor = new BABYLON.Color3(1, 1, 1);
+    material.ambientColor = new BABYLON.Color3(1, 1, 1);
+    material.specularColor = new BABYLON.Color3(0, 0, 0);
+    return material;
   }
 
   _getMaterialColor(type, mapData3D) {
@@ -470,14 +489,30 @@ class Renderer3D extends AppObject {
     return defaults[type] || '#ffffff';
   }
 
-  _hexToRgb(hex) {
-    const normalized = String(hex).replace('#', '').trim();
-    if (!/^[0-9a-fA-F]{6}$/.test(normalized)) return { r: 1, g: 1, b: 1 };
+  _hexToRgb(value) {
+    if (this._isRgbObject(value)) return this._normalizeRgbObject(value);
+    const normalized = String(value ?? '').replace(/^#/, '').trim();
+    const expanded = this._expandHexColor(normalized);
+    if (!/^[0-9a-fA-F]{6}$/.test(expanded)) return { r: 1, g: 1, b: 1 };
     return {
-      r: parseInt(normalized.slice(0, 2), 16) / 255,
-      g: parseInt(normalized.slice(2, 4), 16) / 255,
-      b: parseInt(normalized.slice(4, 6), 16) / 255,
+      r: parseInt(expanded.slice(0, 2), 16) / 255,
+      g: parseInt(expanded.slice(2, 4), 16) / 255,
+      b: parseInt(expanded.slice(4, 6), 16) / 255,
     };
+  }
+
+  _isRgbObject(value) {
+    return Boolean(value && typeof value === 'object' && 'r' in value && 'g' in value && 'b' in value);
+  }
+
+  _normalizeRgbObject(value) {
+    const scale = Math.max(value.r, value.g, value.b) > 1 ? 255 : 1;
+    return { r: value.r / scale, g: value.g / scale, b: value.b / scale };
+  }
+
+  _expandHexColor(value) {
+    if (!/^[0-9a-fA-F]{3}$/.test(value)) return value;
+    return value.split('').map(channel => `${channel}${channel}`).join('');
   }
 
   clearAllChunks() {

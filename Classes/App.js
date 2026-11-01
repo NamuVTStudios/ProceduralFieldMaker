@@ -61,6 +61,31 @@ class App {
         document.addEventListener('visibilitychange', () => {
             this.appManager.setPaused(document.hidden);
         });
+        document.addEventListener('keydown', event => this._handleHistoryShortcut(event));
+    }
+
+    _handleHistoryShortcut(event) {
+        if (!this._isHistoryShortcut(event)) return;
+        const key = event.key.toLowerCase();
+        event.preventDefault();
+        if (key === 'y' || (key === 'z' && event.shiftKey)) {
+            this.appManager.redo();
+            return;
+        }
+        this.appManager.undo();
+    }
+
+    _isHistoryShortcut(event) {
+        if (!event.ctrlKey && !event.metaKey) return false;
+        const key = event.key.toLowerCase();
+        if (key !== 'z' && key !== 'y') return false;
+        if (this._isEditableTarget(event.target)) return false;
+        return key !== 'y' || !event.shiftKey;
+    }
+
+    _isEditableTarget(target) {
+        const tagName = target?.tagName?.toLowerCase();
+        return ['input', 'textarea', 'select'].includes(tagName) || Boolean(target?.isContentEditable);
     }
 
     _startLoop() {

@@ -2,6 +2,7 @@
 class MapLayerManager {
   constructor(appManager) {
     this.appManager = appManager;
+    this.history = new HistoryManager(this);
     this.mapData = null;
     this.layers = [];
     this.activeLayer = null;
@@ -45,6 +46,7 @@ class MapLayerManager {
 
   clearProject() {
     this.filterWorker?.cancelAll();
+    this.history?.clear();
     this.layers = [];
     this.activeLayer = null;
     this.intermediateBuffers = [];
@@ -73,6 +75,7 @@ class MapLayerManager {
       filterName: null,
       filterOptions: null,
       masks: [],
+      renderSnapshot: this.mapData?.sizeX ? buffer.slice() : null,
     };
   }
 
@@ -107,6 +110,10 @@ class MapLayerManager {
   }
 
   ensureMaterialLayer(materialId) {
+    return this._withHistoryAction('Cambiar capa de material', () => this._ensureMaterialLayer(materialId));
+  }
+
+  _ensureMaterialLayer(materialId) {
     if (!this._canSeparateMaterialLayers(materialId)) return null;
     if (this._activeLayerHasMaterial(materialId)) return this.activeLayer;
     if (this._canAssignMaterialToActiveLayer()) return this._assignMaterialToActiveLayer(materialId);
@@ -150,7 +157,7 @@ class MapLayerManager {
 
   _activateAndComposeLayer(layer) {
     this._addAndActivateLayer(layer);
-    this.compose();
+    this.compose({ render: false });
     this._notifyLayerPanelChanged();
   }
 
@@ -167,6 +174,10 @@ class MapLayerManager {
   }
 
   renameLayer(layerId, name) {
+    return this._withHistoryAction('Renombrar capa', () => this._renameLayer(layerId, name));
+  }
+
+  _renameLayer(layerId, name) {
     const layer = this._findLayer(layerId);
     const normalizedName = this._normalizeLayerName(name);
     if (!layer || !normalizedName) return false;
@@ -183,6 +194,10 @@ class MapLayerManager {
   }
 
   createLayer(name = '') {
+    return this._withHistoryAction('Crear capa', () => this._createLayerWithName(name));
+  }
+
+  _createLayerWithName(name) {
     if (!this._canCreateLayer()) return null;
     return this._createAndActivateLayer(name);
   }
@@ -190,7 +205,7 @@ class MapLayerManager {
   _createAndActivateLayer(name) {
     const layer = this._createLayerDefinition(name);
     this._addAndActivateLayer(layer);
-    this.compose();
+    this.compose({ render: false });
     return layer;
   }
 
@@ -216,6 +231,10 @@ class MapLayerManager {
   }
 
   removeLayer(layerId) {
+    return this._withHistoryAction('Eliminar capa', () => this._removeLayerById(layerId));
+  }
+
+  _removeLayerById(layerId) {
     const layer = this._findLayer(layerId);
     if (!this._canRemoveLayer(layer)) return false;
     this._removeLayerAndCompose(layer);
@@ -272,6 +291,10 @@ class MapLayerManager {
   }
 
   setLayerVisibility(layerId, visible) {
+    return this._withHistoryAction('Cambiar visibilidad de capa', () => this._setLayerVisibilityById(layerId, visible));
+  }
+
+  _setLayerVisibilityById(layerId, visible) {
     const layer = this._findLayer(layerId);
     if (!layer) return false;
     this._setLayerVisibility(layer, visible);
@@ -296,6 +319,10 @@ class MapLayerManager {
   }
 
   _updateLayerSetting(layerId, property, value) {
+    return this._withHistoryAction(`Cambiar ${property} de capa`, () => this._applyLayerSetting(layerId, property, value));
+  }
+
+  _applyLayerSetting(layerId, property, value) {
     const layer = this._findLayer(layerId);
     if (!layer) return false;
     layer[property] = value;
@@ -304,6 +331,10 @@ class MapLayerManager {
   }
 
   reorderLayer(layerId, targetIndex) {
+    return this._withHistoryAction('Reordenar capas', () => this._reorderLayerById(layerId, targetIndex));
+  }
+
+  _reorderLayerById(layerId, targetIndex) {
     const sourceIndex = this.layers.findIndex(layer => layer.id === layerId);
     if (sourceIndex < 0) return false;
     this._reorderAndCompose(sourceIndex, targetIndex);
@@ -325,11 +356,215 @@ class MapLayerManager {
     return this.layers.find(layer => layer.id === layerId) ?? null;
   }
 
+  beginHistoryTransaction(label) {
+    return this.history.begin(label);
+  }
+
+  endHistoryTransaction() {
+    return this.history.end();
+  }
+
+  cancelHistoryTransaction() {
+    return this.history.cancel();
+  }
+
+  undo() {
+    return this.history.undo();
+  }
+
+  redo() {
+    return this.history.redo();
+  }
+
+  canUndo() {
+    return this.history.canUndo();
+  }
+
+  canRedo() {
+    return this.history.canRedo();
+  }
+
+  _withHistoryAction(label, callback) {
+    return this.history.run(label, callback);
+  }
+
+  notifyHistoryChanged() {
+    this.appManager.ui?.refreshHistoryControls?.();
+  }
+
+  createHistorySnapshot() {
+    return {
+      layerSequence: this._layerSequence,
+      activeLayerId: this.activeLayer?.id || null,
+      layers: this.layers.map(layer => this._cloneLayerForHistory(layer)),
+    };
+  }
+
+  _cloneLayerForHistory(layer) {
+    return {
+      id: layer.id,
+      name: layer.name,
+      buffer: layer.buffer.slice(),
+      blendMode: layer.blendMode,
+      visible: layer.visible,
+      opacity: layer.opacity,
+      revision: layer.revision || 0,
+      kind: layer.kind,
+      materialId: layer.materialId,
+      sourceLayerId: layer.sourceLayerId,
+      filterName: layer.filterName,
+      filterOptions: this._cloneHistoryValue(layer.filterOptions),
+      masks: (layer.masks || []).map(mask => this._cloneMaskForHistory(mask)),
+    };
+  }
+
+  _cloneMaskForHistory(mask) {
+    return { ...mask, options: this._cloneHistoryValue(mask.options), buffer: mask.buffer.slice() };
+  }
+
+  _cloneHistoryValue(value) {
+    if (value === null || value === undefined) return value;
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  areHistorySnapshotsEqual(first, second) {
+    if (first.layerSequence !== second.layerSequence) return false;
+    if (first.activeLayerId !== second.activeLayerId || first.layers.length !== second.layers.length) return false;
+    return first.layers.every((layer, index) => this._areHistoryLayersEqual(layer, second.layers[index]));
+  }
+
+  _areHistoryLayersEqual(first, second) {
+    if (!this._areLayerMetadataEqual(first, second)) return false;
+    if (!this._areBuffersEqual(first.buffer, second.buffer)) return false;
+    return this._areMasksEqual(first.masks, second.masks);
+  }
+
+  _areLayerMetadataEqual(first, second) {
+    const keys = ['id', 'name', 'blendMode', 'visible', 'opacity', 'revision', 'kind', 'materialId', 'sourceLayerId', 'filterName'];
+    return keys.every(key => first[key] === second[key]) &&
+      JSON.stringify(first.filterOptions) === JSON.stringify(second.filterOptions);
+  }
+
+  _areMasksEqual(first, second) {
+    if (first.length !== second.length) return false;
+    return first.every((mask, index) => this._areMasksAtIndexEqual(mask, second[index]));
+  }
+
+  _areMasksAtIndexEqual(first, second) {
+    if (first.id !== second.id || first.name !== second.name || first.type !== second.type || first.enabled !== second.enabled) return false;
+    if (first.filterName !== second.filterName || JSON.stringify(first.options) !== JSON.stringify(second.options)) return false;
+    return this._areBuffersEqual(first.buffer, second.buffer);
+  }
+
+  _areBuffersEqual(first, second) {
+    if (first.length !== second.length) return false;
+    for (let index = 0; index < first.length; index++) {
+      if (first[index] !== second[index]) return false;
+    }
+    return true;
+  }
+
+  restoreHistorySnapshot(snapshot) {
+    this._restoreSnapshotLayers(snapshot.layers);
+    this._restoreSnapshotMetadata(snapshot);
+    this._restoreSnapshotActiveLayer(snapshot.activeLayerId);
+    this._refreshRestoredProject();
+  }
+
+  _restoreSnapshotLayers(layers) {
+    this.layers = layers.map(layer => this._restoreLayerFromHistory(layer));
+  }
+
+  _restoreSnapshotMetadata(snapshot) {
+    this._layerSequence = snapshot.layerSequence;
+  }
+
+  _restoreSnapshotActiveLayer(layerId) {
+    this.activeLayer = this.layers.find(layer => layer.id === layerId) || this.layers[0] || null;
+  }
+
+  _refreshRestoredProject() {
+    this._syncWorkingBuffer();
+    this.compose({ render: false });
+    this._renderComposedMap();
+    this._notifyLayerPanelChanged();
+  }
+
+  _restoreLayerFromHistory(snapshot) {
+    const layer = { ...snapshot, buffer: snapshot.buffer.slice() };
+    layer.masks = snapshot.masks.map(mask => this._cloneMaskForHistory(mask));
+    layer.renderSnapshot = this.mapData?.sizeX ? layer.buffer.slice() : null;
+    return layer;
+  }
+
   commitChanges({ render = true } = {}) {
     if (!this.mapData || !this.activeLayer) return false;
+    const dirtyChunks = this._collectDirtyChunkKeys(this.activeLayer);
     this._markActiveLayerChanged();
-    this.compose({ render });
+    this.compose({ render: false });
+    if (render) this._renderCommittedChanges(dirtyChunks);
     return true;
+  }
+
+  _collectDirtyChunkKeys(layer) {
+    if (!this.mapData.sizeX) return null;
+    const dirtyChunks = new Set();
+    const previous = layer.renderSnapshot || new Uint8Array(layer.buffer.length);
+    const sizeX = this.mapData.sizeX;
+    const sizeZ = this.mapData.sizeZ;
+    const chunkSize = this.mapData.chunkSize || 16;
+    for (let index = 0; index < layer.buffer.length; index++) {
+      this._collectChangedVoxel(index, layer, previous, dirtyChunks, sizeX, sizeZ, chunkSize);
+    }
+    layer.renderSnapshot = layer.buffer.slice();
+    return dirtyChunks;
+  }
+
+  _collectChangedVoxel(index, layer, previous, dirtyChunks, sizeX, sizeZ, chunkSize) {
+    if (previous[index] === layer.buffer[index]) return;
+    this._addChangedVoxelChunks(index, dirtyChunks, sizeX, sizeZ, chunkSize);
+  }
+
+  _addChangedVoxelChunks(index, dirtyChunks, sizeX, sizeZ, chunkSize) {
+    const x = index % sizeX;
+    const z = Math.floor(index / sizeX) % sizeZ;
+    const y = Math.floor(index / (sizeX * sizeZ));
+    const cx = Math.floor(x / chunkSize);
+    const cy = Math.floor(y / chunkSize);
+    const cz = Math.floor(z / chunkSize);
+    this._addVoxelChunkAndNeighbors(dirtyChunks, { x, y, z, cx, cy, cz, sizeX, sizeY: this.mapData.sizeY, sizeZ, chunkSize });
+  }
+
+  _addVoxelChunkAndNeighbors(target, voxel) {
+    const { x, y, z, cx, cy, cz, sizeX, sizeY, sizeZ, chunkSize } = voxel;
+    const maxChunks = {
+      x: Math.ceil(sizeX / chunkSize),
+      y: Math.ceil(sizeY / chunkSize),
+      z: Math.ceil(sizeZ / chunkSize),
+    };
+    this._addChunkKey(target, cx, cy, cz, maxChunks);
+    if (x % chunkSize === 0) this._addChunkKey(target, cx - 1, cy, cz, maxChunks);
+    if (x % chunkSize === chunkSize - 1) this._addChunkKey(target, cx + 1, cy, cz, maxChunks);
+    if (y % chunkSize === 0) this._addChunkKey(target, cx, cy - 1, cz, maxChunks);
+    if (y % chunkSize === chunkSize - 1) this._addChunkKey(target, cx, cy + 1, cz, maxChunks);
+    if (z % chunkSize === 0) this._addChunkKey(target, cx, cy, cz - 1, maxChunks);
+    if (z % chunkSize === chunkSize - 1) this._addChunkKey(target, cx, cy, cz + 1, maxChunks);
+  }
+
+  _addChunkKey(target, cx, cy, cz, limits) {
+    if (cx < 0 || cy < 0 || cz < 0) return;
+    if (cx >= limits.x || cy >= limits.y || cz >= limits.z) return;
+    target.add(`${cx}_${cy}_${cz}`);
+  }
+
+  _renderCommittedChanges(dirtyChunks) {
+    if (!this.mapData.sizeX || !dirtyChunks) return this._renderComposedMap();
+    const renderer = this.appManager.renderer;
+    if (typeof renderer?.renderDirtyChunks === 'function') {
+      renderer.renderDirtyChunks(this.mapData, dirtyChunks);
+      return;
+    }
+    this._renderComposedMap();
   }
 
   _markActiveLayerChanged() {
@@ -431,6 +666,10 @@ class MapLayerManager {
   }
 
   setLayerMaskEnabled(layerId, maskId, enabled) {
+    return this._withHistoryAction('Cambiar máscara', () => this._setLayerMaskEnabled(layerId, maskId, enabled));
+  }
+
+  _setLayerMaskEnabled(layerId, maskId, enabled) {
     const layer = this._findLayer(layerId);
     const mask = layer?.masks?.find(item => item.id === maskId);
     if (!mask) return false;
@@ -441,6 +680,10 @@ class MapLayerManager {
   }
 
   removeLayerMask(layerId, maskId) {
+    return this._withHistoryAction('Eliminar máscara', () => this._removeLayerMask(layerId, maskId));
+  }
+
+  _removeLayerMask(layerId, maskId) {
     const layer = this._findLayer(layerId);
     if (!layer?.masks) return false;
     const remaining = layer.masks.filter(mask => mask.id !== maskId);
@@ -500,7 +743,11 @@ class MapLayerManager {
     };
   }
 
-  async _runFilter(filterName, options, mode) {
+  _runFilter(filterName, options, mode) {
+    return this._withHistoryAction(`Aplicar filtro ${filterName}`, () => this._runFilterOperation(filterName, options, mode));
+  }
+
+  async _runFilterOperation(filterName, options, mode) {
     const context = this._createFilterContext();
     if (!context) return false;
     const result = await this._executeFilter(filterName, context.source, context.mapData, options);
@@ -525,8 +772,14 @@ class MapLayerManager {
 
   _commitDestructiveFilter(context, result) {
     context.layer.buffer.set(result);
+    this._removeBakedFilterMasks(context.layer);
     this.commitChanges();
+    this._notifyLayerPanelChanged();
     return true;
+  }
+
+  _removeBakedFilterMasks(layer) {
+    layer.masks = (layer.masks || []).filter(mask => mask.type !== 'filter');
   }
 
   _commitNonDestructiveFilter(context, result, filterName, options) {

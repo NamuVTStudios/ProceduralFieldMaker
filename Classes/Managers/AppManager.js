@@ -163,6 +163,14 @@ class AppManager {
         return this.mapLayerManager.applyFilter(filterName, options);
     }
 
+    undo() {
+        return this.mapLayerManager.undo();
+    }
+
+    redo() {
+        return this.mapLayerManager.redo();
+    }
+
     setMode(mode) {
         this.mode = mode;
         this._replaceRenderer(mode);

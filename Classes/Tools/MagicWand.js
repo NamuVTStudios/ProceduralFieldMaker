@@ -27,10 +27,29 @@ class MagicWand extends Tools {
   }
 
   _dispatchFillOperation(point) {
-    const operation = this.applyTool(point.x, point.y, point.z ?? 0);
-    if (operation && typeof operation.catch === 'function') {
-      operation.catch(error => console.error('Magic Wand:', error));
+    const history = this.getMapLayerManager();
+    history?.beginHistoryTransaction('Varita mágica');
+    try {
+      const operation = this.applyTool(point.x, point.y, point.z ?? 0);
+      this._completeFillOperation(operation, history);
+    } catch (error) {
+      history?.cancelHistoryTransaction();
+      throw error;
     }
+  }
+
+  _completeFillOperation(operation, history) {
+    if (!operation || typeof operation.then !== 'function') {
+      history?.endHistoryTransaction();
+      return;
+    }
+    operation.then(
+      () => history?.endHistoryTransaction(),
+      error => {
+        history?.cancelHistoryTransaction();
+        console.error('Magic Wand:', error);
+      },
+    );
   }
 
   onPointerMove() {}

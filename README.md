@@ -204,3 +204,17 @@ Suffix pattern already established — keep it for anything new:
 | Settings window class | `<Tool>Settings` | `EraserSettings` |
 | Exporter class | `<Target>Exporter` | `GodotExporter` |
 | Non-class file | lowercase | `utils.js`, `index.html` |
+
+
+### Historial de edición
+
+- Deshacer: `Ctrl+Z` (o `Cmd+Z` en macOS).
+- Rehacer: `Ctrl+Y` o `Ctrl+Shift+Z` (también `Cmd` en macOS).
+- También están disponibles los botones Deshacer/Rehacer en la barra de acciones.
+- El historial es compartido por los modos 2D y 3D y se reinicia al crear/cerrar un proyecto.
+- Cada trazo se guarda como una acción; cancelar un Pointer Event restaura el snapshot previo en vez de confirmar un trazo parcial.
+- Las operaciones asíncronas de filtros y Varita Mágica mantienen su transacción hasta que finalizan.
+
+### Empaquetado de versiones
+
+Ejecutar `./package-release.sh [ruta/salida.zip]` desde el proyecto. El script excluye `Assets/CURRENT LOGO.png` de todos los ZIP de distribución.

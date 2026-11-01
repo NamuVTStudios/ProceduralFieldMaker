@@ -76,8 +76,7 @@ class GaussianBlurFilter {
     const targetX = x + offsetX;
     if (targetX < 0 || targetX >= context.width) return;
     const index = targetY * context.width + targetX;
-    const weight = this._getKernelWeight(offsetX, offsetY, 0, context);
-    scores[context.source[index]] += weight;
+    this._accumulateMaterialScore(context.source[index], offsetX, offsetY, 0, context, scores);
   }
 
   static _process3DPlanes(context) {
@@ -126,8 +125,12 @@ class GaussianBlurFilter {
     const targetX = x + offsetX;
     if (targetX < 0 || targetX >= context.width) return;
     const index = this._get3DIndex(context, targetX, targetY, targetZ);
-    const weight = this._getKernelWeight(offsetX, offsetY, offsetZ, context);
-    scores[context.source[index]] += weight;
+    this._accumulateMaterialScore(context.source[index], offsetX, offsetY, offsetZ, context, scores);
+  }
+
+  static _accumulateMaterialScore(materialId, x, y, z, context, scores) {
+    const weight = this._getKernelWeight(x, y, z, context);
+    scores[materialId] += weight;
   }
 
   static _get3DIndex(context, x, y, z) {
@@ -141,8 +144,21 @@ class GaussianBlurFilter {
   }
 
   static _selectMaterial(scores, centerMaterial) {
+    if (centerMaterial !== 0) return this._selectSolidMaterial(scores, centerMaterial);
+    return this._selectEmptyMaterial(scores);
+  }
+
+  static _selectSolidMaterial(scores, centerMaterial) {
     const selection = { material: centerMaterial, score: scores[centerMaterial] };
-    for (let materialId = 0; materialId < scores.length; materialId++) {
+    for (let materialId = 1; materialId < scores.length; materialId++) {
+      this._considerMaterial(scores, materialId, selection);
+    }
+    return selection.material;
+  }
+
+  static _selectEmptyMaterial(scores) {
+    const selection = { material: 0, score: scores[0] };
+    for (let materialId = 1; materialId < scores.length; materialId++) {
       this._considerMaterial(scores, materialId, selection);
     }
     return selection.material;

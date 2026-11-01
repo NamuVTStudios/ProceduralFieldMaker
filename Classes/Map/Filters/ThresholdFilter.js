@@ -42,7 +42,12 @@ class ThresholdFilter {
 
   static _mapThresholdBuffer(source, result, weights, threshold, solidMaterialId) {
     for (let index = 0; index < source.length; index++) {
-      result[index] = weights[source[index]] >= threshold ? solidMaterialId : 0;
+      result[index] = this._resolveThresholdCell(weights[source[index]], threshold, solidMaterialId);
     }
+  }
+
+  static _resolveThresholdCell(weight, threshold, solidMaterialId) {
+    if (weight >= threshold) return solidMaterialId;
+    return 0;
   }
 }
