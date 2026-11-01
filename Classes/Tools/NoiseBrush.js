@@ -36,16 +36,27 @@ class NoiseBrush extends Tools {
   }
 
   applyBrush(event, coords) {
-    const mapData = this.appManager.mapData;
-    if (!mapData || !coords) return;
+    if (!this.prepareMaterialLayer(this.selectedMaterialId)) return;
+    const context = this._createBrushContext(event, coords);
+    if (!context) return;
+    this._processBrushContext(context);
+  }
+
+  _createBrushContext(event, coords) {
+    const mapData = this.getEditableMapData();
+    if (!mapData || !coords) return null;
     const amplitude = this.baseAmplitude * this._resolvePressure(event);
-    const center = this._normalizeCoordinates(coords);
-    this._applyByProjectMode(mapData, center, amplitude);
+    return { mapData, center: this._normalizeCoordinates(coords), amplitude };
+  }
+
+  _processBrushContext(context) {
+    const dirtyContext = this._applyByProjectMode(context.mapData, context.center, context.amplitude);
+    this.commitToolChanges(false);
+    this._refreshAfterNoise(dirtyContext);
   }
 
   _resolvePressure(event) {
-    if (event && event.pressure > 0) return event.pressure;
-    return this.defaultPressureFallback;
+    return this.resolveInputPressure(event);
   }
 
   _normalizeCoordinates(coords) {
@@ -59,16 +70,22 @@ class NoiseBrush extends Tools {
   _applyByProjectMode(mapData, center, amplitude) {
     if (this.appManager.mode === '2d') {
       this._apply2D(mapData, center.x, center.y, amplitude);
-      return;
+      return null;
     }
-    this._apply3D(mapData, center.x, center.y, center.z, amplitude);
+    return this._apply3D(mapData, center.x, center.y, center.z, amplitude);
   }
 
   _apply2D(mapData, centerX, centerY, amplitude) {
-    const noise = new NoiseGenerator(mapData.seedHash);
-    const radius = Math.ceil(this.radius);
-    const context = { mapData, centerX, centerY, amplitude, radius, noise };
+    const context = this._create2DContext(mapData, centerX, centerY, amplitude);
     this._scan2DRows(context);
+  }
+
+  _create2DContext(mapData, centerX, centerY, amplitude) {
+    return {
+      mapData, centerX, centerY, amplitude,
+      radius: Math.ceil(this.radius),
+      noise: new NoiseGenerator(mapData.seedHash),
+    };
   }
 
   _scan2DRows(context) {
@@ -108,7 +125,7 @@ class NoiseBrush extends Tools {
   _apply3D(mapData, centerX, centerY, centerZ, amplitude) {
     const context = this._create3DContext(mapData, centerX, centerY, centerZ, amplitude);
     this._scan3DDepth(context);
-    this._rebuildDirtyChunks(context);
+    return context;
   }
 
   _create3DContext(mapData, centerX, centerY, centerZ, amplitude) {
@@ -183,11 +200,17 @@ class NoiseBrush extends Tools {
     context.dirtyChunks.add(`${chunkX},${chunkY},${chunkZ}`);
   }
 
+  _refreshAfterNoise(context) {
+    if (this.appManager.mode === '2d') return this.requestFullRender();
+    this._rebuildDirtyChunks(context);
+  }
+
   _rebuildDirtyChunks(context) {
+    if (!context) return;
     const renderer = this._get3DRenderer();
     if (!renderer || typeof renderer.rebuildChunk !== 'function') return;
     for (const key of context.dirtyChunks) {
-      this._rebuildChunkFromKey(renderer, context.mapData, key);
+      this._rebuildChunkFromKey(renderer, this.appManager.mapData, key);
     }
   }
 

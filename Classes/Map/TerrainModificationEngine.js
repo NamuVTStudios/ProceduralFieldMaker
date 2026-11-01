@@ -169,23 +169,48 @@ class TerrainModificationEngine {
   }
 
   _copyCloneStampArea(mapData2D, source, target, radius) {
+    const snapshot = this._captureCloneStampArea(mapData2D, source, radius);
+    this._applyCloneStampSnapshot(mapData2D, target, radius, snapshot);
+  }
+
+  _captureCloneStampArea(mapData2D, source, radius) {
+    const diameter = radius * 2 + 1;
+    const snapshot = new Uint8Array(diameter * diameter);
     for (let dy = -radius; dy <= radius; dy++) {
-      this._copyCloneStampRow(mapData2D, source, target, radius, dy);
+      this._captureCloneStampRow(mapData2D, source, radius, dy, snapshot, diameter);
     }
+    return snapshot;
   }
 
-  _copyCloneStampRow(mapData2D, source, target, radius, dy) {
+  _captureCloneStampRow(mapData2D, source, radius, dy, snapshot, diameter) {
     for (let dx = -radius; dx <= radius; dx++) {
-      this._copyCloneStampCell(mapData2D, source, target, radius, dx, dy);
+      this._captureCloneStampCell(mapData2D, source, radius, dx, dy, snapshot, diameter);
     }
   }
 
-  _copyCloneStampCell(mapData2D, source, target, radius, dx, dy) {
+  _captureCloneStampCell(mapData2D, source, radius, dx, dy, snapshot, diameter) {
     if (dx * dx + dy * dy > radius * radius) return;
-    const sIdxX = source.x + dx;
-    const sIdxY = source.y + dy;
-    const sourceMaterialId = getCell2D(mapData2D, sIdxX, sIdxY);
-    setCell2D(mapData2D, target.x + dx, target.y + dy, sourceMaterialId);
+    const index = (dy + radius) * diameter + dx + radius;
+    snapshot[index] = getCell2D(mapData2D, source.x + dx, source.y + dy);
+  }
+
+  _applyCloneStampSnapshot(mapData2D, target, radius, snapshot) {
+    const diameter = radius * 2 + 1;
+    for (let dy = -radius; dy <= radius; dy++) {
+      this._applyCloneStampRow(mapData2D, target, radius, dy, snapshot, diameter);
+    }
+  }
+
+  _applyCloneStampRow(mapData2D, target, radius, dy, snapshot, diameter) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      this._applyCloneStampCell(mapData2D, target, radius, dx, dy, snapshot, diameter);
+    }
+  }
+
+  _applyCloneStampCell(mapData2D, target, radius, dx, dy, snapshot, diameter) {
+    if (dx * dx + dy * dy > radius * radius) return;
+    const index = (dy + radius) * diameter + dx + radius;
+    setCell2D(mapData2D, target.x + dx, target.y + dy, snapshot[index]);
   }
 
   /** Calcula la bounding box del área de edición, recortada a los límites del mapa. */

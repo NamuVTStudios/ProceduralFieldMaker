@@ -15,11 +15,22 @@ class MagicWand extends Tools {
     this.label = 'Magic Wand';
     this.replacementMaterialId = 0;
     this.maxFillLimit = 250000;
+    this.fillWorker = typeof Worker === 'function' && typeof MagicWandWorkerClient === 'function'
+      ? new MagicWandWorkerClient()
+      : null;
+    this.workerQueue = Promise.resolve();
   }
 
   onPointerDown(event, worldCoords) {
     if (!worldCoords) return;
-    this.applyTool(worldCoords.x, worldCoords.y, worldCoords.z ?? 0);
+    this._dispatchFillOperation(worldCoords);
+  }
+
+  _dispatchFillOperation(point) {
+    const operation = this.applyTool(point.x, point.y, point.z ?? 0);
+    if (operation && typeof operation.catch === 'function') {
+      operation.catch(error => console.error('Magic Wand:', error));
+    }
   }
 
   onPointerMove() {}
@@ -27,10 +38,70 @@ class MagicWand extends Tools {
   onPointerUp() {}
 
   applyTool(targetX, targetY, targetZ = 0) {
-    const mapData = this.appManager.mapData;
-    if (!mapData) return;
+    const mapData = this.getEditableMapData();
+    if (!mapData) return false;
     const point = this._normalizeTargetPoint(targetX, targetY, targetZ);
-    this._applyFillByMode(mapData, point.x, point.y, point.z);
+    if (!this.fillWorker) return this._applyFillByMode(mapData, point.x, point.y, point.z);
+    return this._enqueueWorkerFill(point);
+  }
+
+  _enqueueWorkerFill(point) {
+    const operation = this.workerQueue.then(() => this._executeWorkerFill(point));
+    this.workerQueue = operation.catch(() => false);
+    return operation;
+  }
+
+  async _executeWorkerFill(point) {
+    const context = this._createWorkerFillContext();
+    if (!context) return false;
+    try {
+      const result = await this.fillWorker.apply(
+        context.layer.buffer, context.mapData, point, this.replacementMaterialId, this.maxFillLimit,
+      );
+      return this._commitWorkerFill(context, result);
+    } catch (error) {
+      console.warn('Magic Wand Worker fallback:', error);
+      return this._runLocalWorkerFallback(context, point);
+    }
+  }
+
+  _createWorkerFillContext() {
+    const manager = this.getMapLayerManager();
+    const layer = manager?.getActiveLayer();
+    const mapData = this.appManager.mapData;
+    if (!manager || !layer || !mapData) return null;
+    return { manager, layer, mapData, mode: this.appManager.mode, revision: layer.revision || 0 };
+  }
+
+  _isWorkerFillContextCurrent(context) {
+    if (this.destroyed) return false;
+    if (this.appManager.mapData !== context.mapData) return false;
+    if (this.getMapLayerManager() !== context.manager) return false;
+    if (context.manager.getActiveLayer() !== context.layer) return false;
+    return (context.layer.revision || 0) === context.revision;
+  }
+
+  _commitWorkerFill(context, result) {
+    if (!this._isWorkerFillContextCurrent(context)) return false;
+    this._applyWorkerBuffer(context, result.buffer);
+    this._refreshWorkerFill(context.mode, result.dirtyChunks);
+    return true;
+  }
+
+  _applyWorkerBuffer(context, buffer) {
+    context.layer.buffer.set(buffer);
+    context.manager.commitChanges({ render: false });
+  }
+
+  _runLocalWorkerFallback(context, point) {
+    if (!this._isWorkerFillContextCurrent(context)) return false;
+    const mapData = this.getEditableMapData();
+    return this._applyFillByMode(mapData, point.x, point.y, point.z);
+  }
+
+  _refreshWorkerFill(mode, dirtyChunks) {
+    if (mode === '2d') return this.requestFullRender();
+    this._rebuildChunkKeys(dirtyChunks);
   }
 
   _normalizeTargetPoint(x, y, z) {
@@ -38,18 +109,21 @@ class MagicWand extends Tools {
   }
 
   _applyFillByMode(mapData, x, y, z) {
-    if (this.appManager.mode === '2d') {
-      this._floodFill2D(mapData, x, y, this.replacementMaterialId);
-      return;
-    }
-    this._floodFill3D(mapData, x, y, z, this.replacementMaterialId);
+    if (!mapData) return false;
+    if (this.appManager.mode === '2d') return this._floodFill2D(mapData, x, y, this.replacementMaterialId);
+    return this._floodFill3D(mapData, x, y, z, this.replacementMaterialId);
   }
 
   _floodFill2D(mapData, startX, startY, newMaterial) {
     const context = this._create2DFillContext(mapData, startX, startY, newMaterial);
-    if (!context) return;
+    if (!context) return false;
+    this._complete2DFill(context);
+    return true;
+  }
+
+  _complete2DFill(context) {
     this._run2DFillQueue(context);
-    this._refresh2DRenderer(mapData);
+    this.commitToolChanges();
   }
 
   _isInside2DMap(mapData, x, y) {
@@ -72,11 +146,14 @@ class MagicWand extends Tools {
   }
 
   _createFillBuffers(totalCells, startIndex) {
+    const buffers = this._allocateFillBuffers(totalCells);
+    this._seedFillQueue(buffers.queue, buffers.visited, startIndex);
+    return { ...buffers, head: 0, tail: 1, processed: 0 };
+  }
+
+  _allocateFillBuffers(totalCells) {
     const capacity = Math.min(totalCells, this._getSafeFillLimit());
-    const queue = new Int32Array(capacity);
-    const visited = new Uint8Array(totalCells);
-    this._seedFillQueue(queue, visited, startIndex);
-    return { queue, visited, head: 0, tail: 1, processed: 0, capacity };
+    return { queue: new Int32Array(capacity), visited: new Uint8Array(totalCells), capacity };
   }
 
   _getSafeFillLimit() {
@@ -131,17 +208,13 @@ class MagicWand extends Tools {
     context.queue[context.tail++] = index;
   }
 
-  _refresh2DRenderer(mapData) {
-    const renderer = this.appManager.renderer;
-    if (!renderer || typeof renderer.renderFullMap !== 'function') return;
-    renderer.renderFullMap(mapData);
-  }
-
   _floodFill3D(mapData, startX, startY, startZ, newMaterial) {
     const context = this._create3DFillContext(mapData, startX, startY, startZ, newMaterial);
-    if (!context) return;
+    if (!context) return false;
     this._run3DFillQueue(context);
+    this.commitToolChanges(false);
     this._rebuildDirtyChunks(context);
+    return true;
   }
 
   _isInside3DMap(mapData, x, y, z) {
@@ -151,9 +224,7 @@ class MagicWand extends Tools {
   _create3DFillContext(mapData, startX, startY, startZ, newMaterial) {
     const start = this._get3DFillStart(mapData, startX, startY, startZ, newMaterial);
     if (!start) return null;
-    const totalVoxels = mapData.sizeX * mapData.sizeY * mapData.sizeZ;
-    const buffers = this._createFillBuffers(totalVoxels, start.index);
-    return this._assemble3DFillContext(mapData, start.material, newMaterial, buffers);
+    return this._assemble3DFillContext(mapData, start, newMaterial);
   }
 
   _get3DFillStart(mapData, x, y, z, newMaterial) {
@@ -164,9 +235,11 @@ class MagicWand extends Tools {
     return { index, material };
   }
 
-  _assemble3DFillContext(mapData, targetMaterial, newMaterial, buffers) {
+  _assemble3DFillContext(mapData, start, newMaterial) {
+    const totalVoxels = mapData.sizeX * mapData.sizeY * mapData.sizeZ;
+    const buffers = this._createFillBuffers(totalVoxels, start.index);
     return {
-      mapData, targetMaterial, newMaterial, ...buffers,
+      mapData, targetMaterial: start.material, newMaterial, ...buffers,
       chunkSize: mapData.chunkSize || 16, dirtyChunks: new Set(),
     };
   }
@@ -227,15 +300,21 @@ class MagicWand extends Tools {
   }
 
   _rebuildDirtyChunks(context) {
+    this._rebuildChunkKeys(context.dirtyChunks);
+  }
+
+  _rebuildChunkKeys(keys) {
     const renderer = this.appManager.renderer;
     if (!renderer || typeof renderer.rebuildChunk !== 'function') return;
-    for (const key of context.dirtyChunks) {
-      this._rebuildChunkFromKey(renderer, context.mapData, key);
-    }
+    for (const key of keys) this._rebuildChunkFromKey(renderer, this.appManager.mapData, key);
   }
 
   _rebuildChunkFromKey(renderer, mapData, key) {
     const [chunkX, chunkY, chunkZ] = key.split(',').map(Number);
     renderer.rebuildChunk(mapData, chunkX, chunkY, chunkZ);
+  }
+
+  onDestroy() {
+    this.fillWorker?.cancelAll();
   }
 }

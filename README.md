@@ -78,7 +78,18 @@ ProceduralFieldMaker/
 
 ---
 
-## 2. File Naming
+## 2. Editing Controls
+
+- **2D navigation:** draw with the left mouse button; pan with the middle or right button while dragging; zoom with the mouse wheel.
+- **3D navigation:** edit with the left mouse button; orbit with the right button while dragging; pan with the middle button while dragging; zoom with the mouse wheel. Use the camera button or `Tab` to switch between orbit and fly cameras.
+- **Materials:** choose a material from the top toolbar selector or click one of its color swatches. The selection is applied to the active tool when that tool supports a material target.
+- **Layers:** use the right-side Layers panel to add/select/rename/delete/reorder layers, toggle visibility, and adjust opacity or blend mode.
+- **Brand assets:** `Assets/ProceduralFieldMaker.svg` / `.png` are the square app icon; `Assets/ProceduralFieldMaker_Logo.svg` / `.png` are the horizontal wordmark.
+- **Tool settings:** select a tool in the top toolbar; its settings window opens on the left.
+
+---
+
+## 3. File Naming
 
 **Rule: one class per file, filename in PascalCase matching the class name exactly.**
 
@@ -110,7 +121,7 @@ This is the one concrete fix needed — the current files mix conventions (`appo
 
 ---
 
-## 3. Code Naming Conventions
+## 4. Code Naming Conventions
 
 ### 3.1 Classes
 **PascalCase.** Already consistent in the project (`AppManager`, `ToolsManager`, `Brush`, `MagicWand`, `BrushSettings`) — keep it.
@@ -176,7 +187,7 @@ Suffix pattern already established — keep it for anything new:
 
 ---
 
-## 4. Quick Reference
+## 5. Quick Reference
 
 | Element | Convention | Example |
 |---|---|---|

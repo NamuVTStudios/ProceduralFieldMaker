@@ -19,8 +19,7 @@ class Renderer3D extends AppObject {
     this.scene = null;
     this.cameraController = null;
     this.gizmoManager = null;
-    this._pointerObserver = null;
-    this._toolPointerDown = false;
+    this.pointerInput = null;
     this.isInitialized = false;
     this.chunks = new Map();
     this.workspaceHelpers = [];
@@ -86,6 +85,7 @@ class Renderer3D extends AppObject {
 
   _createWorkspaceHelpers() {
     this._createGroundGrid();
+    this._createWorkspacePickPlane();
     this._createVolumeOutline();
     this._createCoordinateAxes();
   }
@@ -94,6 +94,18 @@ class Renderer3D extends AppObject {
     const mapData = this.getMapData();
     const lines = this._buildGroundGridLines(mapData.sizeX, mapData.sizeZ);
     this._createLineSystem('workspace_grid', lines, new BABYLON.Color3(0.22, 0.29, 0.38));
+  }
+
+  _createWorkspacePickPlane() {
+    const mapData = this.getMapData();
+    const plane = BABYLON.MeshBuilder.CreateGround('workspace_pick_plane', {
+      width: mapData.sizeX,
+      height: mapData.sizeZ,
+    }, this.scene);
+    plane.position.y = 0;
+    plane.visibility = 0;
+    plane.isPickable = true;
+    this.workspaceHelpers.push(plane);
   }
 
   _createLineSystem(name, lines, color) {
@@ -202,7 +214,7 @@ class Renderer3D extends AppObject {
 
   _setupLoopAndController(canvas) {
     this.cameraController = this._createCameraController(canvas);
-    this._bindScenePointerEvents();
+    this._bindToolPointerEvents(canvas);
     this._startRenderLoop();
   }
 
@@ -218,52 +230,40 @@ class Renderer3D extends AppObject {
   }
 
 
-  _bindScenePointerEvents() {
-    if (!this.scene.onPointerObservable) return;
-    this._pointerObserver = this.scene.onPointerObservable.add((pointerInfo) => {
-      this._handleScenePointerInfo(pointerInfo);
-    });
+  _bindToolPointerEvents(canvas) {
+    this.pointerInput = new PointerInputController(
+      canvas,
+      this.appManager.toolsManager,
+      event => this._resolveToolCoordinates(event),
+    );
+    this.pointerInput.attach();
   }
 
-  _handleScenePointerInfo(pointerInfo) {
-    if (pointerInfo.type === BABYLON.PointerEventTypes.POINTERDOWN) {
-      this._handleScenePointerDown(pointerInfo.event);
-      return;
-    }
-    if (pointerInfo.type === BABYLON.PointerEventTypes.POINTERMOVE) {
-      this._handleScenePointerMove(pointerInfo.event);
-      return;
-    }
-    if (pointerInfo.type === BABYLON.PointerEventTypes.POINTERUP) {
-      this._handleScenePointerUp(pointerInfo.event);
-    }
-  }
-
-  _handleScenePointerDown(event) {
-    if (event.button !== 0) return;
-    const coordinates = this._resolvePickedVoxelCoordinates();
-    if (!coordinates) return;
-    this._toolPointerDown = true;
-    this._dispatchActiveTool('onPointerDown', event, coordinates);
-  }
-
-  _handleScenePointerMove(event) {
-    if (!this._toolPointerDown) return;
-    const coordinates = this._resolvePickedVoxelCoordinates();
-    if (!coordinates) return;
-    this._dispatchActiveTool('onPointerMove', event, coordinates);
-  }
-
-  _handleScenePointerUp(event) {
-    if (!this._toolPointerDown) return;
-    this._toolPointerDown = false;
-    this._dispatchActiveTool('onPointerUp', event, null);
-  }
-
-  _resolvePickedVoxelCoordinates() {
-    const pick = this.scene.pick(this.scene.pointerX, this.scene.pointerY);
+  _resolveToolCoordinates(event) {
+    const point = this._getCanvasPointerPosition(event);
+    const pick = this.scene.pick(point.x, point.y);
     if (!pick || !pick.hit || !pick.pickedPoint) return null;
+    return this._resolvePickedCoordinates(pick);
+  }
+
+  _getCanvasPointerPosition(event) {
+    const canvas = this.engine.getRenderingCanvas();
+    const rect = canvas.getBoundingClientRect();
+    const width = this.engine.getRenderWidth();
+    const height = this.engine.getRenderHeight();
+    return {
+      x: (event.clientX - rect.left) * width / rect.width,
+      y: (event.clientY - rect.top) * height / rect.height,
+    };
+  }
+
+  _resolvePickedCoordinates(pick) {
+    if (pick.pickedMesh?.name === 'workspace_pick_plane') return this._convertGroundPlaneCoordinates(pick.pickedPoint);
     return this._convertPickToVoxelCoordinates(pick);
+  }
+
+  _convertGroundPlaneCoordinates(point) {
+    return { x: Math.floor(point.x), y: 0, z: Math.floor(point.z) };
   }
 
   _convertPickToVoxelCoordinates(pick) {
@@ -277,17 +277,9 @@ class Renderer3D extends AppObject {
     };
   }
 
-  _dispatchActiveTool(methodName, event, coordinates) {
-    const tool = this.appManager.toolsManager.activeTool;
-    if (!tool || typeof tool[methodName] !== 'function') return;
-    tool[methodName](event, coordinates);
-  }
-
   _removeScenePointerEvents() {
-    if (!this.scene || !this._pointerObserver) return;
-    this.scene.onPointerObservable.remove(this._pointerObserver);
-    this._pointerObserver = null;
-    this._toolPointerDown = false;
+    this.pointerInput?.detach();
+    this.pointerInput = null;
   }
 
   _renderSceneFrame() {
@@ -401,7 +393,7 @@ class Renderer3D extends AppObject {
   _processSingleFace(mapData3D, x, y, z, type, face, buffers) {
     const visible = this._checkFaceVisibility(mapData3D, x + face.dir[0], y + face.dir[1], z + face.dir[2]);
     if (!visible) return;
-    this._buildFaceVertices(x, y, z, type, face, buffers);
+    this._buildFaceVertices(mapData3D, x, y, z, type, face, buffers);
   }
 
   _checkFaceVisibility(mapData3D, nx, ny, nz) {
@@ -411,8 +403,8 @@ class Renderer3D extends AppObject {
     return getVoxel3D(mapData3D, nx, ny, nz) === 0;
   }
 
-  _buildFaceVertices(x, y, z, type, face, buffers) {
-    const color = this._getMaterialColor(type);
+  _buildFaceVertices(mapData3D, x, y, z, type, face, buffers) {
+    const color = this._getMaterialColor(type, mapData3D);
     for (const vertex of face.vertices) {
       this._appendFaceVertex(x, y, z, vertex, face.norm, color, buffers);
     }
@@ -467,12 +459,25 @@ class Renderer3D extends AppObject {
     this.chunks.set(key, mesh);
   }
 
-  _getMaterialColor(type) {
-    if (type === 1) return { r: 0.88, g: 0.75, b: 0.42 };
-    if (type === 2) return { r: 0.55, g: 0.35, b: 0.17 };
-    if (type === 3) return { r: 0.5, g: 0.55, b: 0.56 };
-    if (type === 4) return { r: 0.22, g: 0.48, b: 0.84 };
-    return { r: 1, g: 1, b: 1 };
+  _getMaterialColor(type, mapData3D) {
+    const material = (mapData3D.materials || []).find(item => item.id === type);
+    const color = material?.color || this._getFallbackMaterialColor(type);
+    return this._hexToRgb(color);
+  }
+
+  _getFallbackMaterialColor(type) {
+    const defaults = { 1: '#e0c068', 2: '#8b5a2b', 3: '#7f8c8d', 4: '#3a7bd5' };
+    return defaults[type] || '#ffffff';
+  }
+
+  _hexToRgb(hex) {
+    const normalized = String(hex).replace('#', '').trim();
+    if (!/^[0-9a-fA-F]{6}$/.test(normalized)) return { r: 1, g: 1, b: 1 };
+    return {
+      r: parseInt(normalized.slice(0, 2), 16) / 255,
+      g: parseInt(normalized.slice(2, 4), 16) / 255,
+      b: parseInt(normalized.slice(4, 6), 16) / 255,
+    };
   }
 
   clearAllChunks() {

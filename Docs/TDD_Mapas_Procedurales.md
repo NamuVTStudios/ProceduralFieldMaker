@@ -433,6 +433,7 @@ ProceduralFieldMaker/
 │   ├── Base/
 │   │   ├── AppObject.js
 │   │   ├── Tools.js
+│   │   ├── ToolSettingsWindow.js
 │   │   └── Windows.js
 │   ├── Export/                 # (new) ExportRegistry + individual exporters
 │   │   ├── Exporters/
@@ -446,13 +447,16 @@ ProceduralFieldMaker/
 │   │   ├── AppManager.js
 │   │   ├── MapLayerManager.js
 │   │   ├── ToolsManager.js
-│   │   └── WindowsManager.js
+│   │   ├── WindowsManager.js
+│   │   └── PointerInputController.js
 │   ├── Map/                    # (new) MapData, generation, modification
 │   │   ├── Curves/
 │   │   │   └── BezierPath3D.js
 │   │   ├── Filters/
 │   │   │   ├── GaussianBlurFilter.js
-│   │   │   └── ThresholdFilter.js
+│   │   │   ├── ThresholdFilter.js
+│   │   │   ├── MapFilterWorkerClient.js
+│   │   │   └── MagicWandWorkerClient.js
 │   │   ├── Generators/
 │   │   │   ├── NoiseGenerator.js
 │   │   │   └── CellularAutomata.js
@@ -481,6 +485,9 @@ ProceduralFieldMaker/
 │   │   └── NoiseBrushSettings.js
 │   ├── App.js
 │   └── UI.js
+├── Workers/
+│   ├── MapFilterWorker.js
+│   └── MagicWandWorker.js
 ├── Libraries/
 │   ├── pixi.js
 │   └── babylon.js
@@ -522,6 +529,16 @@ ProceduralFieldMaker/
 - Curve Extrude con `BezierPath3D.js` y envío por objetos transferibles.
 - Flood-fill de la Varita Mágica (Purga y Transmutación) en Web Worker.
 
+**Estado de las tareas Jira implementadas — 1 de noviembre de 2026:**
+- [x] Lógica funcional de Brush, Eraser, MagicWand, NoiseBrush y CloneStamp sobre el buffer de la capa activa.
+- [x] Ventanas de configuración específicas para las cinco herramientas registradas.
+- [x] Entrada unificada mediante Pointer Events en los viewports 2D y 3D; captura/liberación del puntero, cancelación de trazo y presión para NoiseBrush.
+- [x] ToolsManager mantiene una única herramienta activa y centraliza el despacho de eventos.
+- [x] WindowsManager mantiene una única ventana de configuración abierta y la asocia a cada herramienta.
+- [x] MapLayerManager compone hasta 20 capas mediante dos buffers intermedios alternados, con visibilidad, opacidad y modos normal/multiply/add/subtract.
+- [x] Gaussian Blur y Threshold migrados a Web Workers, con fallback local cuando Worker no está disponible o falla.
+- [x] Flood-fill 2D/3D ejecutado en Web Worker, con cola de operaciones, límite configurable y remallado selectivo de chunks en 3D.
+
 **Fase 3 — UI y Exportación:**
 - Clase `UI`: construcción dinámica de los botones de `#controles` a partir de las tools registradas, layout distinto para mobile/desktop.
 - `ExportRegistry` + exportadores concretos: `JSONExporter`, `PNGExporter`, `GLBExporter`.
@@ -537,7 +554,20 @@ ProceduralFieldMaker/
 
 ---
 
-## 11. Riesgos Técnicos a Validar
+## 11. Editing UI — First Delivery
+
+- [x] Responsive top toolbar split into spaced groups: tools, active material, and actions/view; narrow layouts can scroll horizontally.
+- [x] Global material selector with a dropdown and color swatches. It updates `selectedMaterialId` on Brush/NoiseBrush and `replacementMaterialId` on MagicWand; tool settings synchronize the shared selector.
+- [x] Contextual navigation guide describing pan, orbit, zoom, and fly-camera controls.
+- [x] Visible orbit/fly camera toggle in 3D mode; `Tab` remains available when focus is not inside an interactive UI control.
+- [x] Layer panel with selection, visibility, creation, renaming, deletion, reordering, opacity, and blend modes.
+- [x] Procedural Field Maker square icon and horizontal wordmark assets in SVG and PNG; the previous `Assets/CURRENT LOGO.png` asset remains unchanged.
+
+**Navigation controls:**
+- 2D: left mouse button edits; middle or right button + drag pans; mouse wheel zooms.
+- 3D: left mouse button edits; right button + drag orbits; middle button + drag pans; mouse wheel zooms; the camera button or `Tab` switches between orbit and fly modes.
+
+## 12. Riesgos Técnicos a Validar
 
 - **Marching cubes en tiempo real:** puede ser costoso; validar con prototipo antes de comprometerse como opción por defecto.
 - **Sincronización 2D↔3D:** si se quiere ver un mismo mapa en ambos modos, hay que definir la regla de conversión heightmap↔voxel.
@@ -547,3 +577,25 @@ ProceduralFieldMaker/
 - **Costo combinado de Web Workers:** generación, flood-fill, blur, CSG y extrusión por curvas compiten por Web Workers; falta definir una cola de prioridad entre esos jobs (Fase 4).
 - **Layer Manager + rendimiento:** hasta 20 buffers `Uint8Array` completos multiplica el uso de memoria y el costo de recomponerlos en cada edición; evaluar lazy allocation para capas vacías.
 - **Dependencia de Babylon.js:** el equipo del `Renderer3D` debe consumir los buffers planos (`positions`/`normals`/`colors`/`indices`) del meshing y construir la geometría con la API de Babylon; validar temprano que la reconstrucción de mallas por chunk mantiene framerate interactivo.
+
+
+## 13. Composición por material 2D y modos de filtrado
+
+- [x] En 2D y 3D, Brush y NoiseBrush solicitan una capa de pintura asociada al material seleccionado antes de modificar el buffer. La primera pintura puede reclamar la capa base vacía; al cambiar de material se crea una capa nueva encima, sin modificar las capas anteriores.
+- [x] La capa de pintura conserva `materialId` y usa el nombre del material. Al volver a seleccionar un material diferente del de la capa activa se crea una nueva capa cronológica; no se reutiliza una capa inferior y se evita que un trazo nuevo quede detrás de trazos más recientes.
+- [x] La composición normal de materiales es categórica: el material de la capa superior reemplaza al inferior en las celdas ocupadas. Los IDs de material no se interpolan numéricamente porque no representan valores continuos.
+- [x] Los filtros ofrecen dos modos: **Destructivo** reemplaza el buffer de la capa activa; **No destructivo** conserva el buffer original y almacena el resultado como una máscara de filtro dentro de esa misma capa.
+- [x] Cada máscara almacena su nombre, tipo, opciones, estado enabled y buffer de salida. La composición aplica la última máscara de filtro habilitada como resultado visual de la capa, sin alterar su buffer de pintura original.
+- [x] Las máscaras se muestran anidadas dentro de su capa en el panel. Se pueden activar/desactivar o eliminar; al desactivarlas o eliminarlas se recupera inmediatamente la pintura original.
+- [x] La creación de efectos respeta el límite máximo de capas y la cola asíncrona de filtros continúa descartando resultados obsoletos si cambian el proyecto, la capa activa o su revisión.
+
+**Alcance del modo no destructivo:** el resultado se conserva como una máscara de filtro rasterizada dentro de la capa fuente, junto con metadata del filtro. El buffer de pintura original no se modifica. La máscara puede desactivarse o eliminarse desde el panel de capas. Si se edita posteriormente la capa, la máscara conserva la instantánea calculada; para incluir las nuevas ediciones se debe volver a aplicar el filtro.
+
+**Opacidad en mapas categóricos:** los materiales se almacenan como IDs enteros, no como RGBA. Para las capas de pintura y de filtro, la mezcla normal selecciona el material de origen cuando la opacidad es igual o superior al 50%; por debajo conserva el material inferior. Para transparencia alfa continua haría falta ampliar el modelo de datos y los renderizadores para transportar color/alpha por celda o vóxel.
+
+
+## 14. Máscaras de filtro y materiales 3D
+
+- [x] Los filtros no destructivos se almacenan como máscaras internas (`layer.masks`) y no como capas FX independientes. El panel permite activar/desactivar y eliminar cada máscara.
+- [x] `Renderer3D` resuelve el color de cada vóxel desde `mapData3D.materials[].color` y convierte el color hexadecimal a RGB para los vertex colors de Babylon.js.
+- [x] `Tools.prepareMaterialLayer()` se aplica en ambos modos, de modo que al cambiar de material en 3D también se crea una capa de material superior y se conserva la geometría/material anterior.

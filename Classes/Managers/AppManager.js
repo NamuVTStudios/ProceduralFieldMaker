@@ -25,6 +25,7 @@ class AppManager {
         this.destructionEngine = new TerrainModificationEngine(this);
         this.toolsManager = new ToolsManager(this);
         this.windowsManager = new WindowsManager(this);
+        this.mapLayerManager = new MapLayerManager(this);
     }
 
     setContainer(container) {
@@ -131,6 +132,7 @@ class AppManager {
     _replaceProject(mode) {
         this.closeProject();
         this.mapData = this._createProjectMapData(mode);
+        this.mapLayerManager.initializeProject(this.mapData);
         this.setMode(mode);
     }
 
@@ -152,8 +154,13 @@ class AppManager {
     closeProject() {
         if (this.renderer) this.unregister(this.renderer);
         this.renderer = null;
+        this.mapLayerManager.clearProject();
         this.mapData = null;
         this.mode = null;
+    }
+
+    applyFilter(filterName, options = {}) {
+        return this.mapLayerManager.applyFilter(filterName, options);
     }
 
     setMode(mode) {

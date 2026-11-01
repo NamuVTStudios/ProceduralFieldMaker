@@ -62,9 +62,13 @@ class CameraController2D extends AppObject {
   }
 
   _onPointerDown(e) {
-    if (e.button === 1 || e.button === 2) {
-      this._startPanning(e.clientX, e.clientY);
-    }
+    if (!this._isPanButton(e.button)) return;
+    e.preventDefault();
+    this._startPanning(e.clientX, e.clientY);
+  }
+
+  _isPanButton(button) {
+    return button === 1 || button === 2;
   }
 
   _startPanning(clientX, clientY) {
@@ -96,9 +100,8 @@ class CameraController2D extends AppObject {
   }
 
   _onPointerUp(e) {
-    if (e.button === 1 || e.button === 2) {
-      this.isPanning = false;
-    }
+    if (!this._isPanButton(e.button)) return;
+    this.isPanning = false;
   }
 
   _onWheel(e) {

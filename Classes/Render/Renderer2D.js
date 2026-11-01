@@ -13,10 +13,7 @@ class Renderer2D extends AppObject {
     this._ready = false;
     this._destroyed = false;
     this.cameraController = null;
-    this._toolPointerDown = false;
-    this._onCanvasPointerDown = (event) => this._handleToolPointerDown(event);
-    this._onToolPointerMove = (event) => this._handleToolPointerMove(event);
-    this._onToolPointerUp = (event) => this._handleToolPointerUp(event);
+    this.pointerInput = null;
   }
 
   /**
@@ -39,7 +36,7 @@ class Renderer2D extends AppObject {
 
   _initializeInteractionControllers() {
     this._initializeCameraController();
-    this._bindToolPointerEvents();
+    this._initializePointerInput();
   }
 
   _initializeCameraController() {
@@ -48,33 +45,13 @@ class Renderer2D extends AppObject {
     this.cameraController.zoomLevel = this.worldContainer.scale.x || 1;
   }
 
-  _bindToolPointerEvents() {
-    this.pixiApp.canvas.addEventListener('pointerdown', this._onCanvasPointerDown);
-    window.addEventListener('pointermove', this._onToolPointerMove);
-    window.addEventListener('pointerup', this._onToolPointerUp);
-  }
-
-  _handleToolPointerDown(event) {
-    if (event.button !== 0) return;
-    this._toolPointerDown = true;
-    this._dispatchActiveTool('onPointerDown', event);
-  }
-
-  _handleToolPointerMove(event) {
-    if (!this._toolPointerDown) return;
-    this._dispatchActiveTool('onPointerMove', event);
-  }
-
-  _handleToolPointerUp(event) {
-    if (!this._toolPointerDown) return;
-    this._toolPointerDown = false;
-    this._dispatchActiveTool('onPointerUp', event, null);
-  }
-
-  _dispatchActiveTool(methodName, event, coordinates = this._resolveToolCoordinates(event)) {
-    const tool = this.appManager.toolsManager.activeTool;
-    if (!tool || typeof tool[methodName] !== 'function') return;
-    tool[methodName](event, coordinates);
+  _initializePointerInput() {
+    this.pointerInput = new PointerInputController(
+      this.pixiApp.canvas,
+      this.appManager.toolsManager,
+      event => this._resolveToolCoordinates(event),
+    );
+    this.pointerInput.attach();
   }
 
   _resolveToolCoordinates(event) {
@@ -94,19 +71,8 @@ class Renderer2D extends AppObject {
   }
 
   _removeToolPointerEvents() {
-    if (!this.pixiApp) return;
-    this._removeCanvasPointerDownListener();
-    this._removeWindowPointerListeners();
-    this._toolPointerDown = false;
-  }
-
-  _removeCanvasPointerDownListener() {
-    this.pixiApp.canvas.removeEventListener('pointerdown', this._onCanvasPointerDown);
-  }
-
-  _removeWindowPointerListeners() {
-    window.removeEventListener('pointermove', this._onToolPointerMove);
-    window.removeEventListener('pointerup', this._onToolPointerUp);
+    this.pointerInput?.detach();
+    this.pointerInput = null;
   }
 
   _createPixiConfiguration() {

@@ -15,11 +15,11 @@ class AppObject {
   // Contrato de ciclo de vida
   // ---------------------------------------------------------------------
 
-  onInit() { }
+  onInit() {}
 
-  onUpdate(dt) { }
+  onUpdate(dt) {}
 
-  onDestroy() { }
+  onDestroy() {}
 
   isActive() {
     return this.active && !this.destroyed;
@@ -120,6 +120,10 @@ class AppObject {
 
   getWindowsManager() {
     return this.appManager.windowsManager;
+  }
+
+  getMapLayerManager() {
+    return this.appManager.mapLayerManager;
   }
 
   getRegisteredObjects() {

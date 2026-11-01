@@ -12,13 +12,19 @@ class CameraController3D extends AppObject {
     this.orbitCamera = null;
     this.flyCamera = null;
     this._onKeyDown = this._onKeyDown.bind(this);
+    this._onContextMenu = event => event.preventDefault();
   }
 
   onInit() {
     if (!this.scene || !this.canvas) return;
     this._instantiateCameras();
     this._applyMode();
+    this._bindBrowserControls();
+  }
+
+  _bindBrowserControls() {
     window.addEventListener('keydown', this._onKeyDown);
+    this.canvas.addEventListener('contextmenu', this._onContextMenu);
   }
 
   _instantiateCameras() {
@@ -60,8 +66,23 @@ class CameraController3D extends AppObject {
   _configureOrbitCamera() {
     this.orbitCamera.wheelPrecision = 15;
     this.orbitCamera.lowerRadiusLimit = 5;
+    this._configureOrbitPointerButtons();
     this.orbitCamera.minZ = 0.1;
     this.orbitCamera.maxZ = 10000;
+  }
+
+  _configureOrbitPointerButtons() {
+    const pointerInput = this.orbitCamera.inputs?.attached?.pointers;
+    if (!pointerInput) return;
+    pointerInput.buttons = [1, 2];
+    this._configureOrbitPointerInteractions();
+  }
+
+  _configureOrbitPointerInteractions() {
+    const inputMap = this.orbitCamera.movement?.input;
+    if (!inputMap?.setInteraction) return;
+    inputMap.setInteraction('pointer', { button: 2 }, 'rotate');
+    inputMap.setInteraction('pointer', { button: 1 }, 'pan');
   }
 
   _createFlythroughCamera() {
@@ -78,6 +99,13 @@ class CameraController3D extends AppObject {
   _configureFlythroughCamera() {
     this.flyCamera.speed = 1;
     this._setupFlyCameraKeys();
+    this._configureFlyPointerButtons();
+  }
+
+  _configureFlyPointerButtons() {
+    const mouseInput = this.flyCamera.inputs?.attached?.mouse;
+    if (!mouseInput) return;
+    mouseInput.buttons = [1, 2];
   }
 
   _setupFlyCameraKeys() {
@@ -98,14 +126,16 @@ class CameraController3D extends AppObject {
   _activateOrbitCam() {
     this.flyCamera.detachControl();
     this.scene.activeCamera = this.orbitCamera;
-    this.orbitCamera.attachControl(this.canvas, true);
+    this.orbitCamera.attachControl(this.canvas, false);
+    this._configureOrbitPointerButtons();
   }
 
   _activateFlythroughCam() {
     this.orbitCamera.detachControl();
     this._synchronizeFlyCamTransforms();
     this.scene.activeCamera = this.flyCamera;
-    this.flyCamera.attachControl(this.canvas, true);
+    this.flyCamera.attachControl(this.canvas, false);
+    this._configureFlyPointerButtons();
   }
 
   _synchronizeFlyCamTransforms() {
@@ -116,16 +146,23 @@ class CameraController3D extends AppObject {
   toggleMode() {
     this.mode = this.mode === 'orbit' ? 'flythrough' : 'orbit';
     this._applyMode();
+    this.appManager.ui?.refreshCameraModeUI?.();
   }
 
   _onKeyDown(event) {
     if (event.key !== 'Tab') return;
+    if (this._isInteractiveTarget(event.target)) return;
     event.preventDefault();
     this.toggleMode();
   }
 
+  _isInteractiveTarget(target) {
+    return Boolean(target?.closest?.('button, input, select, textarea, a, [contenteditable="true"]'));
+  }
+
   onDestroy() {
     window.removeEventListener('keydown', this._onKeyDown);
+    this.canvas?.removeEventListener('contextmenu', this._onContextMenu);
     this._disposeCameras();
   }
 

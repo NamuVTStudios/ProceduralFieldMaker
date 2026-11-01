@@ -9,7 +9,9 @@ class Tools extends AppObject {
      */
     constructor(appManager) {
         super(appManager);
+        this.name = this.constructor.name;
         this.label = "Generic Tool";
+        this.isDrawing = false;
         this._initializeGizmoTransform();
     }
 
@@ -25,13 +27,11 @@ class Tools extends AppObject {
     // ---------------------------------------------------------------------
 
     /** Disparado por el ToolsManager al activar la herramienta en la UI. */
-    onActivate() {
-        console.log(`Herramienta activada: ${this.label}`);
-    }
+    onActivate() {}
 
     /** Disparado por el ToolsManager al conmutar a otra herramienta. */
     onDeactivate() {
-        console.log(`Herramienta desactivada: ${this.label}`);
+        this.onPointerUp(null, null);
     }
 
     /**
@@ -39,7 +39,23 @@ class Tools extends AppObject {
      * Debe ser sobrescrito por cada subclase de herramienta específica.
      */
     applyTool(targetX, targetY, targetZ = 0) {
-        // Implementación abstracta para ser delegada a Brush, Eraser, etc.
+        // Las herramientas concretas implementan la operación.
+    }
+
+    getEditableMapData() {
+        return this.getMapLayerManager()?.getEditableMapData() || this.getMapData();
+    }
+
+    prepareMaterialLayer(materialId) {
+        const manager = this.getMapLayerManager();
+        const layer = manager?.ensureMaterialLayer(materialId);
+        return Boolean(layer);
+    }
+
+    commitToolChanges(render = true) {
+        const manager = this.getMapLayerManager();
+        if (manager?.commitChanges) return manager.commitChanges({ render });
+        return render ? this.requestFullRender() : true;
     }
 
     // ---------------------------------------------------------------------
@@ -83,13 +99,13 @@ class Tools extends AppObject {
      * @returns {number} Valor normalizado entre 0.0 y 1.0
      */
     resolveInputPressure(event) {
-        const rawPressure = event.pressure;
+        const rawPressure = event?.pressure ?? 0;
         return this._evaluatePressureFallback(rawPressure);
     }
 
     /** @private */
     _evaluatePressureFallback(pressure) {
-        const hasNoPressure = pressure === 0 || pressure === 0.5;
-        return hasNoPressure ? 0.5 : pressure;
+        const hasNoPressure = !Number.isFinite(pressure) || pressure <= 0 || pressure === 0.5;
+        return hasNoPressure ? 0.5 : Math.max(0, Math.min(1, pressure));
     }
 }

@@ -37,13 +37,23 @@ class App {
         tm.register(new Eraser(this.appManager));
         tm.register(new NoiseBrush(this.appManager));
         tm.register(new MagicWand(this.appManager));
+        tm.register(new CloneStamp(this.appManager));
     }
 
     _registerDefaultWindows() {
         const wm = this.appManager.windowsManager;
-        wm.register(new BrushSettings(this.appManager));
-        wm.register(new EraserSettings(this.appManager));
-        wm.register(new MagicWandSettings(this.appManager));
+        this._registerToolSettingsWindow(wm, 'Brush', BrushSettings);
+        this._registerToolSettingsWindow(wm, 'Eraser', EraserSettings);
+        this._registerToolSettingsWindow(wm, 'NoiseBrush', NoiseBrushSettings);
+        this._registerToolSettingsWindow(wm, 'MagicWand', MagicWandSettings);
+        this._registerToolSettingsWindow(wm, 'CloneStamp', CloneStampSettings);
+    }
+
+    _registerToolSettingsWindow(manager, toolName, WindowType) {
+        const tool = this.appManager.toolsManager.getTool(toolName);
+        if (!tool) return null;
+        const settingsWindow = new WindowType(this.appManager, tool);
+        return manager.register(settingsWindow, tool);
     }
 
     _bindGlobalEvents() {

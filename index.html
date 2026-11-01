@@ -3,12 +3,13 @@
 <head>
     <title>Procedural Field Maker</title>
     <meta charset="utf-8" />
-    <meta name="color-scheme" content="light only" />
+    <meta name="color-scheme" content="dark" />
     <meta property="twitter:card" content="summary_large_image" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <link rel="stylesheet" type="text/css" href="styles.css">
-    <link rel="icon" type="image/png" href="Assets/CURRENT LOGO.png" />
-    <link rel="apple-touch-icon" href="Assets/CURRENT LOGO.png" />
+    <link rel="icon" type="image/svg+xml" href="Assets/ProceduralFieldMaker.svg" />
+    <link rel="alternate icon" type="image/png" href="Assets/ProceduralFieldMaker.png" />
+    <link rel="apple-touch-icon" href="Assets/ProceduralFieldMaker.png" />
     <!-- 1 import the libraries -->
     <script src="Libraries/pixi.js"></script>
     <script src="Libraries/babylon.js"></script>
@@ -17,6 +18,7 @@
     <script src="Classes/Base/AppObject.js"></script>
     <script src="Classes/Base/Tools.js"></script>
     <script src="Classes/Base/Windows.js"></script>
+    <script src="Classes/Base/ToolSettingsWindow.js"></script>
     <script src="Classes/Export/Exporters/GLBExporter.js"></script>
     <script src="Classes/Export/Exporters/GodotExporter.js"></script>
     <script src="Classes/Export/Exporters/JSONExporter.js"></script>
@@ -27,11 +29,14 @@
     <script src="Classes/Managers/MapLayerManager.js"></script>
     <script src="Classes/Managers/ToolsManager.js"></script>
     <script src="Classes/Managers/WindowsManager.js"></script>
+    <script src="Classes/Managers/PointerInputController.js"></script>
     <script src="Classes/Map/Generators/CellularAutomata.js"></script>
     <script src="Classes/Map/Generators/NoiseGenerator.js"></script>
     <script src="Classes/Map/Curves/BezierPath3D.js"></script>
     <script src="Classes/Map/Filters/GaussianBlurFilter.js"></script>
     <script src="Classes/Map/Filters/ThresholdFilter.js"></script>
+    <script src="Classes/Map/Filters/MapFilterWorkerClient.js"></script>
+    <script src="Classes/Map/Filters/MagicWandWorkerClient.js"></script>
     <script src="Classes/Map/Modeling/BooleanProcessor.js"></script>
     <script src="Classes/Map/Modeling/PrimitiveGenerator.js"></script>
     <script src="Classes/Map/MapData2D.js"></script>
@@ -43,11 +48,14 @@
     <script src="Classes/Render/Renderer3D.js"></script>
     <script src="Classes/Tools/Brush.js"></script>
     <script src="Classes/Tools/Eraser.js"></script>
+    <script src="Classes/Tools/CloneStamp.js"></script>
     <script src="Classes/Tools/MagicWand.js"></script>
     <script src="Classes/Tools/NoiseBrush.js"></script>
     <script src="Classes/Windows/BrushSettings.js"></script>
+    <script src="Classes/Windows/CloneStampSettings.js"></script>
     <script src="Classes/Windows/EraserSettings.js"></script>
     <script src="Classes/Windows/MagicWandSettings.js"></script>
+    <script src="Classes/Windows/NoiseBrushSettings.js"></script>
     <script src="Classes/UI.js"></script>    
     <!-- 3. Y FINALMENTE cargamos la clase principal App -->
     <script src="Classes/App.js"></script>

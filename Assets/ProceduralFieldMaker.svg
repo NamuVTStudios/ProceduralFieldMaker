@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Procedural Field Maker</title>
+  <desc id="desc">Isometric voxel terrain with a bright green plateau, stone mountain and flowing blue water over a dark navy background.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1c3049"/>
+      <stop offset="1" stop-color="#0a1422"/>
+    </linearGradient>
+    <linearGradient id="grassTop" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c5ff78"/>
+      <stop offset=".52" stop-color="#50d66f"/>
+      <stop offset="1" stop-color="#16a76c"/>
+    </linearGradient>
+    <linearGradient id="grassSide" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2dbd70"/>
+      <stop offset="1" stop-color="#126348"/>
+    </linearGradient>
+    <linearGradient id="stoneLeft" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c4d2df"/>
+      <stop offset="1" stop-color="#71879e"/>
+    </linearGradient>
+    <linearGradient id="stoneRight" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#879bad"/>
+      <stop offset="1" stop-color="#3e566d"/>
+    </linearGradient>
+    <linearGradient id="water" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#a3f5ff"/>
+      <stop offset=".45" stop-color="#35c9ff"/>
+      <stop offset="1" stop-color="#087be6"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="13"/>
+      <feOffset dy="13"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.01 0 0 0 0 0.04 0 0 0 0 0.09 0 0 0 .55 0"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <pattern id="grid" width="34" height="34" patternUnits="userSpaceOnUse" patternTransform="skewY(-28) scale(1 .72)">
+      <path d="M34 0H0V34" fill="none" stroke="#7e9fbe" stroke-opacity=".12" stroke-width="1.2"/>
+    </pattern>
+  </defs>
+
+  <rect x="12" y="12" width="488" height="488" rx="94" fill="url(#background)"/>
+  <rect x="25" y="25" width="462" height="462" rx="82" fill="url(#grid)" opacity=".72"/>
+  <rect x="12.75" y="12.75" width="486.5" height="486.5" rx="93" fill="none" stroke="#91b7d8" stroke-opacity=".2" stroke-width="1.5"/>
+
+  <g filter="url(#shadow)" stroke-linejoin="round">
+    <!-- Floating voxel island base -->
+    <path d="M256 240 428 337 256 437 84 337Z" fill="#133e3c" stroke="#55d98a" stroke-opacity=".42" stroke-width="3"/>
+    <path d="M84 337 256 437 256 469 84 369Z" fill="#17614b" stroke="#0c453c" stroke-width="2"/>
+    <path d="M256 437 428 337 428 369 256 469Z" fill="#0e4a48" stroke="#0b3b43" stroke-width="2"/>
+
+    <!-- Terrain ledges -->
+    <path d="M84 300 256 400 256 437 84 337Z" fill="url(#grassSide)" stroke="#208c61" stroke-width="2"/>
+    <path d="M256 400 428 300 428 337 256 437Z" fill="#157957" stroke="#105b4b" stroke-width="2"/>
+    <path d="M84 300 256 200 428 300 256 400Z" fill="url(#grassTop)" stroke="#8af39c" stroke-width="3"/>
+
+    <!-- Grass patches / voxel blocks -->
+    <path d="M108 298 145 277 182 299 145 321Z" fill="#b5f56d" stroke="#55c967" stroke-width="2"/>
+    <path d="M145 321 182 299 182 318 145 340Z" fill="#258b58"/>
+    <path d="M182 299 219 278 256 300 219 322Z" fill="#79ec77" stroke="#42ba66" stroke-width="2"/>
+    <path d="M219 322 256 300 256 321 219 343Z" fill="#1e9b62"/>
+    <path d="M330 298 367 277 404 299 367 321Z" fill="#9df16e" stroke="#47c86b" stroke-width="2"/>
+    <path d="M367 321 404 299 404 320 367 342Z" fill="#167a53"/>
+    <path d="M292 337 329 316 366 338 329 360Z" fill="#c3ff83" stroke="#5bd878" stroke-width="2"/>
+    <path d="M329 360 366 338 366 359 329 381Z" fill="#178b5c"/>
+
+    <!-- Main rocky mountain -->
+    <path d="M256 62 333 151 378 231 256 302 134 231 179 151Z" fill="url(#stoneLeft)" stroke="#d8e8f7" stroke-width="3"/>
+    <path d="M256 62 333 151 378 231 256 302Z" fill="url(#stoneRight)" stroke="#a8bbce" stroke-width="2"/>
+    <path d="M256 62 286 112 256 132 226 112Z" fill="#f2fbff" stroke="#ffffff" stroke-width="2"/>
+    <path d="M226 112 256 132 256 178 195 213 179 151Z" fill="#b9d0e3" stroke="#d9eaf8" stroke-width="2"/>
+    <path d="M286 112 333 151 317 213 256 178 256 132Z" fill="#7892a9" stroke="#a7bbce" stroke-width="2"/>
+    <path d="M179 151 195 213 256 248 256 302 134 231Z" fill="#71869b" stroke="#91a8bd" stroke-width="2"/>
+    <path d="M333 151 378 231 256 302 256 248 317 213Z" fill="#40596f" stroke="#718ba1" stroke-width="2"/>
+    <path d="M195 213 256 178 317 213 256 248Z" fill="#d5e4ee" stroke="#f0f8ff" stroke-width="2"/>
+    <path d="M195 213 256 248 256 273 195 238Z" fill="#647d91"/>
+    <path d="M256 248 317 213 317 238 256 273Z" fill="#40596f"/>
+
+    <!-- Waterfall from the snowy ridge -->
+    <path d="M260 178 276 187 276 280 260 290Z" fill="url(#water)" stroke="#b7f7ff" stroke-width="1.5"/>
+    <path d="M260 290 276 280 294 290 277 301Z" fill="#4edaff" stroke="#b7f7ff" stroke-width="1.5"/>
+    <path d="M277 301 294 290 294 347 277 358Z" fill="#138ddd" stroke="#63dcff" stroke-width="1.5"/>
+    <path d="M260 358 277 348 294 358 277 369Z" fill="#9cf1ff" stroke="#d4fbff" stroke-width="1.5"/>
+
+    <!-- Small water pool -->
+    <path d="M256 369 310 338 365 369 310 400Z" fill="#1189ce" stroke="#69ddff" stroke-width="2"/>
+    <path d="M277 369 310 350 343 369 310 388Z" fill="#53d7ff" opacity=".8"/>
+
+    <!-- Terrain highlight blocks -->
+    <path d="M111 260 144 241 177 260 144 279Z" fill="#d1ff89" stroke="#7fe178" stroke-width="2"/>
+    <path d="M144 279 177 260 177 278 144 297Z" fill="#28a967"/>
+    <path d="M345 258 378 239 411 258 378 277Z" fill="#b6f778" stroke="#62d678" stroke-width="2"/>
+    <path d="M378 277 411 258 411 276 378 295Z" fill="#178d60"/>
+  </g>
+</svg>

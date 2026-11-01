@@ -1,84 +1,85 @@
-/**
- * Windows.js
- * Clase padre global para la renderización de paneles de control en la UI.
- * Refactorizado bajo la regla estricta de un máximo de 3 subtareas por método.
- */
+/** Clase base para paneles de configuración administrados por WindowsManager. */
 class Windows extends AppObject {
-    /**
-     * @param {object} appManager Referencia única al orquestador central.
-     */
-    constructor(appManager) {
-        super(appManager);
-        this.title = "Generic Window";
-        this.domElement = null;
-        this.active = false;
-    }
+  constructor(appManager) {
+    super(appManager);
+    this.title = 'Generic Window';
+    this.domElement = null;
+    this.isOpen = false;
+  }
 
-    // ---------------------------------------------------------------------
-    // Ciclo de Vida y Control de Visibilidad de Ventanas
-    // ---------------------------------------------------------------------
+  open() {
+    if (this.destroyed) return false;
+    this.isOpen = true;
+    this._updateDOMVisibility();
+    return true;
+  }
 
-    /** Abre la ventana y actualiza su visibilidad en el DOM. */
-    open() {
-        this.active = true;
-        this._updateDOMVisibility();
-    }
+  close() {
+    this.isOpen = false;
+    this._updateDOMVisibility();
+    return true;
+  }
 
-    /** Cierra la ventana y oculta su contenedor en el DOM. */
-    close() {
-        this.active = false;
-        this._updateDOMVisibility();
-    }
+  isActive() {
+    return super.isActive() && this.isOpen;
+  }
 
-    /** @private */
-    _updateDOMVisibility() {
-        if (!this.domElement) return;
-        this.domElement.classList.toggle('ui-hidden', !this.active);
-    }
+  _updateDOMVisibility() {
+    if (!this.domElement) return;
+    this.domElement.classList.toggle('ui-hidden', !this.isOpen);
+  }
 
-    // ---------------------------------------------------------------------
-    // Sub-módulo: Construcción e Inyección de Plantillas de UI
-    // ---------------------------------------------------------------------
+  mount(parentElement) {
+    if (this.domElement) return this.domElement;
+    const container = this._createWindowContainer();
+    this._buildWindowHeader(container);
+    this._attachToParent(container, parentElement);
+    return container;
+  }
 
-    /**
-     * Enlaza y monta de forma segura el contenedor principal de la ventana (TDD 3.1).
-     * @param {HTMLElement} parentElement Nodo del DOM donde se inyectará la ventana.
-     */
-    mount(parentElement) {
-        const windowDiv = this._createWindowContainer();
-        this._buildWindowHeader(windowDiv);
-        this._attachToParent(windowDiv, parentElement);
-    }
+  _createWindowContainer() {
+    const div = document.createElement('section');
+    div.className = 'ui-window ui-hidden';
+    div.setAttribute('role', 'dialog');
+    div.setAttribute('aria-label', this.title);
+    this.domElement = div;
+    return div;
+  }
 
-    /** @private */
-    _createWindowContainer() {
-        const div = document.createElement('div');
-        div.className = 'ui-window ui-hidden';
-        this.domElement = div;
-        return div;
-    }
+  _buildWindowHeader(container) {
+    const header = document.createElement('header');
+    header.className = 'ui-window-header';
+    this._appendHeaderTitle(header);
+    this._appendCloseButton(header);
+    container.appendChild(header);
+  }
 
-    /** @private */
-    _buildWindowHeader(container) {
-        const header = document.createElement('div');
-        header.className = 'ui-window-header';
-        header.textContent = this.title;
-        container.appendChild(header);
-    }
+  _appendHeaderTitle(header) {
+    const title = document.createElement('span');
+    title.textContent = this.title;
+    header.appendChild(title);
+  }
 
-    /** @private */
-    _attachToParent(container, parentElement) {
-        const target = parentElement || document.body;
-        target.appendChild(container);
-        this._renderContent(container);
-    }
+  _appendCloseButton(header) {
+    const button = document.createElement('button');
+    button.className = 'ui-window-close';
+    button.type = 'button';
+    button.textContent = '×';
+    button.setAttribute('aria-label', 'Cerrar ventana');
+    button.addEventListener('click', () => this.appManager.windowsManager.close(this));
+    header.appendChild(button);
+  }
 
-    /**
-     * Método abstracto para ser sobrescrito por los paneles específicos.
-     * Aquí cada ventana inyectará sus propios sliders, inputs y botones.
-     * @protected
-     */
-    _renderContent(container) {
-        // Delegado a BrushSettings, EraserSettings, etc.
-    }
+  _attachToParent(container, parentElement) {
+    (parentElement || document.body).appendChild(container);
+    this._renderContent(container);
+  }
+
+  _renderContent() {}
+
+  onDestroy() {
+    this.close();
+    this.domElement?.remove();
+    this.domElement = null;
+  }
 }
