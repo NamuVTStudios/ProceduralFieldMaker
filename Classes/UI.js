@@ -119,20 +119,54 @@ class UI {
         card.appendChild(options);
     }
 
+    
     _createModeOptions() {
         const options = this._el('div', 'ui-menu-options');
-        options.appendChild(this._buildModeButton('2d', '2D', 'Corte transversal'));
-        options.appendChild(this._buildModeButton('3d', '3D', 'Espacio volumétrico'));
+
+        options.appendChild(
+            this._buildModeButton(
+                '2d',
+                '2D',
+                'Vista superior',
+                'top'
+            )
+        );
+
+        options.appendChild(
+            this._buildModeButton(
+                '2d',
+                '2D',
+                'Vista lateral',
+                'side'
+            )
+        );
+
+        options.appendChild(
+            this._buildModeButton(
+                '3d',
+                '3D',
+                'Espacio volumétrico'
+            )
+        );
+
         return options;
     }
 
-    _buildModeButton(mode, title, description) {
+
+   
+    _buildModeButton(mode, title, description, view = null) {
         const button = this._el('button', 'ui-mode-button');
         button.type = 'button';
+
         this._appendModeButtonLabels(button, title, description);
-        button.addEventListener('click', () => this._startProject(mode));
+
+        button.addEventListener('click', () => {
+        this._startProject(mode, view);
+    });
+
         return button;
     }
+
 
     _appendModeButtonLabels(button, title, description) {
         button.appendChild(this._el('span', 'ui-mode-title', title));
@@ -941,10 +975,12 @@ class UI {
         this.renderCanvas3D.classList.toggle('ui-hidden', mode !== '3d');
     }
 
-    _startProject(mode) {
-        this.appManager.newProject(mode);
+    
+    _startProject(mode, view = null) {
+        this.appManager.newProject(mode, { view });
         this.showWorkspace();
     }
+
 
     _onMenuButton() {
         const confirmed = window.confirm('¿Volver al menú? Se pierde el lienzo actual.');

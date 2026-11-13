@@ -104,6 +104,21 @@ class MapLayerManager {
     this._syncWorkingBuffer();
     return this._workingMapData;
   }
+  getExportMapData() {
+    if (!this.mapData) return null;
+
+    this.compose({ render: false });
+
+    const exportData = { ...this.mapData };
+
+    if (this.mapData.sizeX) {
+        exportData.voxels = this.finalBuffer.slice();
+    } else {
+        exportData.cells = this.finalBuffer.slice();
+    }
+
+    return exportData;
+  }
 
   getActiveLayer() {
     return this.activeLayer;

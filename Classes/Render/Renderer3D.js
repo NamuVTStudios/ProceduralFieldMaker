@@ -470,7 +470,7 @@ class Renderer3D extends AppObject {
 
   _createVertexColorMaterial(key) {
     const material = new BABYLON.StandardMaterial(`mat_${key}`, this.scene);
-    material.backFaceCulling = true;
+    material.backFaceCulling = false;
     material.disableLighting = true;
     material.diffuseColor = new BABYLON.Color3(1, 1, 1);
     material.ambientColor = new BABYLON.Color3(1, 1, 1);

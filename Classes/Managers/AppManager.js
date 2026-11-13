@@ -115,26 +115,70 @@ class AppManager {
     hasProject() {
         return this.mapData !== null;
     }
+    /**
+ * Exporta el proyecto actual al formato solicitado.
+ */
+exportProject(format, filename = null) {
+    if (!this.hasProject()) {
+        throw new Error("No hay ningún proyecto abierto para exportar.");
+    }
+
+    const exportMapData = this.mapLayerManager.getExportMapData();
+
+    if (!exportMapData) {
+        throw new Error("No se pudieron obtener los datos del mapa.");
+    }
+
+    const exporter = ExportRegistry.getExporter(format);
+
+    if (typeof exporter.download !== "function") {
+        throw new Error(`El exportador ${format} no permite descargas.`);
+    }
+
+    const defaultFilename = `procedural-map.${format.toLowerCase()}`;
+
+    return exporter.download(
+        exportMapData,
+        filename || defaultFilename
+    );
+    }
 
     /**
      * Crea un lienzo de trabajo nuevo en la dimensión elegida ('2d' o '3d'):
      * genera el MapData vacío y arranca el renderer correspondiente.
      */
-    newProject(mode) {
+    
+    newProject(mode, options = {}) {
         this._assertSupportedMode(mode);
-        this._replaceProject(mode);
+        this._replaceProject(mode, options);
     }
+
 
     _assertSupportedMode(mode) {
         if (!DEFAULT_PROJECT_SETTINGS[mode]) throw new Error(`Modo desconocido: ${mode}`);
     }
 
-    _replaceProject(mode) {
+    
+
+    _replaceProject(mode, options = {}) {
         this.closeProject();
+
         this.mapData = this._createProjectMapData(mode);
+
+        // Generamos el terreno procedural si el proyecto es 2D.
+        if (mode === '2d') {
+        ProceduralMapGenerator.generate2D(this.mapData, {
+            view: options.view ?? 'side'
+        });
+            } else if (mode === '3d') {
+                ProceduralMapGenerator.generate3D(this.mapData);
+            }
+
         this.mapLayerManager.initializeProject(this.mapData);
         this.setMode(mode);
     }
+
+
 
     _createProjectMapData(mode) {
         const settings = DEFAULT_PROJECT_SETTINGS[mode];
