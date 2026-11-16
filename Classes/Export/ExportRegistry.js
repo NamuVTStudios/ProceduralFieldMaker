@@ -61,3 +61,6 @@ class ExportRegistry {
 // Registramos el exportador JSON.
 ExportRegistry.register("json", JSONExporter);
 ExportRegistry.register("png", PNGExporter);
+ExportRegistry.register("glb", GLBExporter);
+ExportRegistry.register("unity", UnityExporter);
+ExportRegistry.register("godot", GodotExporter);

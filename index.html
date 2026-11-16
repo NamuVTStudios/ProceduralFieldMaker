@@ -1,3 +1,4 @@
+
 <html>
 
 <head>
@@ -6,14 +7,18 @@
     <meta name="color-scheme" content="dark" />
     <meta property="twitter:card" content="summary_large_image" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+
     <link rel="stylesheet" type="text/css" href="styles.css">
     <link rel="icon" type="image/svg+xml" href="Assets/ProceduralFieldMaker.svg" />
     <link rel="alternate icon" type="image/png" href="Assets/ProceduralFieldMaker.png" />
     <link rel="apple-touch-icon" href="Assets/ProceduralFieldMaker.png" />
-    <!-- 1 import the libraries -->
+
+    <!-- 1. Importamos las bibliotecas -->
     <script src="Libraries/pixi.js"></script>
     <script src="Libraries/babylon.js"></script>
-    <!-- 2 Import utilities and classes for the app's objects -->
+    <script src="Libraries/babylonjs.serializers.js"></script>
+
+    <!-- 2. Utilidades y clases base -->
     <script src="utils.js"></script>
     <script src="Classes/Base/AppObject.js"></script>
     <script src="Classes/Base/Tools.js"></script>
@@ -22,19 +27,21 @@
 
     <!-- Exportaciones -->
     <script src="Classes/Export/Core/VoxelMeshBuilder.js"></script>
-
     <script src="Classes/Export/Exporters/GLBExporter.js"></script>
     <script src="Classes/Export/Exporters/GodotExporter.js"></script>
     <script src="Classes/Export/Exporters/JSONExporter.js"></script>
     <script src="Classes/Export/Exporters/PNGExporter.js"></script>
     <script src="Classes/Export/Exporters/UnityExporter.js"></script>
-
     <script src="Classes/Export/ExportRegistry.js"></script>
+
+    <!-- Administradores -->
     <script src="Classes/Managers/HistoryManager.js"></script>
     <script src="Classes/Managers/MapLayerManager.js"></script>
     <script src="Classes/Managers/ToolsManager.js"></script>
     <script src="Classes/Managers/WindowsManager.js"></script>
     <script src="Classes/Managers/PointerInputController.js"></script>
+
+    <!-- Generadores y procesamiento de mapas -->
     <script src="Classes/Map/Generators/CellularAutomata.js"></script>
     <script src="Classes/Map/Generators/NoiseGenerator.js"></script>
     <script src="Classes/Map/Curves/BezierPath3D.js"></script>
@@ -48,32 +55,40 @@
     <script src="Classes/Map/Generators/ProceduralMapGenerator.js"></script>
     <script src="Classes/Map/MapData3D.js"></script>
     <script src="Classes/Map/TerrainModificationEngine.js"></script>
+
+    <!-- Renderizado y cámaras -->
     <script src="Classes/Render/CameraController2D.js"></script>
     <script src="Classes/Render/CameraController3D.js"></script>
     <script src="Classes/Render/Renderer2D.js"></script>
     <script src="Classes/Render/Renderer3D.js"></script>
+
+    <!-- Herramientas -->
     <script src="Classes/Tools/Brush.js"></script>
     <script src="Classes/Tools/Eraser.js"></script>
     <script src="Classes/Tools/CloneStamp.js"></script>
     <script src="Classes/Tools/MagicWand.js"></script>
     <script src="Classes/Tools/NoiseBrush.js"></script>
+
+    <!-- Ventanas y configuración -->
     <script src="Classes/Windows/BrushSettings.js"></script>
     <script src="Classes/Windows/CloneStampSettings.js"></script>
     <script src="Classes/Windows/EraserSettings.js"></script>
     <script src="Classes/Windows/MagicWandSettings.js"></script>
     <script src="Classes/Windows/NoiseBrushSettings.js"></script>
-    <script src="Classes/UI.js"></script>    
-    <!-- Exportaciones -->
-    <script src="Classes/Export/Exporters/JSONExporter.js"></script>
-    <script src="Classes/Export/ExportRegistry.js"></script>
+
+    <!-- Interfaz -->
+    <script src="Classes/UI.js"></script>
+
+    <!-- Administrador principal -->
     <script src="Classes/Managers/AppManager.js"></script>
-    <!-- 3. Y FINALMENTE cargamos la clase principal App -->
+
+    <!-- 3. Clase principal -->
     <script src="Classes/App.js"></script>
 </head>
 
 <body>
     <script>
-        const app = new App()
+        window.app = new App();
     </script>
 </body>
 

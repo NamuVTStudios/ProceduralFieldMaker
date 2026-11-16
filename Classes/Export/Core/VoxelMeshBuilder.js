@@ -52,21 +52,28 @@ class VoxelMeshBuilder {
      * Comprueba si una posición contiene aire.
      * Las posiciones fuera del mapa también se consideran aire.
      */
-    static _isAir(mapData, x, y, z) {
-        const { sizeX, sizeY, sizeZ, voxels } = mapData;
+    
+/**
+ * Comprueba si una posición contiene aire.
+ * Las posiciones fuera del mapa también se consideran aire.
+ */
+static _isExposed(mapData, x, y, z) {
+    const { sizeX, sizeY, sizeZ, voxels } = mapData;
 
-        if (
-            x < 0 || x >= sizeX ||
-            y < 0 || y >= sizeY ||
-            z < 0 || z >= sizeZ
-        ) {
-            return true;
-        }
-
-        const index = (y * sizeZ + z) * sizeX + x;
-
-        return voxels[index] === 0;
+    if (
+        x < 0 || x >= sizeX ||
+        y < 0 || y >= sizeY ||
+        z < 0 || z >= sizeZ
+    ) {
+        return true;
     }
+
+    const index = (y * sizeZ + z) * sizeX + x;
+    const neighborMaterialId = voxels[index];
+
+    return neighborMaterialId === 0;
+}
+
 
     /**
      * Agrega las caras expuestas de un voxel.
@@ -128,11 +135,12 @@ class VoxelMeshBuilder {
 
             const [dx, dy, dz] = direction.neighbor;
 
-            const isExposed = this._isAir(
-                mapData,
-                x + dx,
-                y + dy,
-                z + dz
+            const isExposed = this._isExposed(
+            mapData,
+            x + dx,
+            y + dy,
+            z + dz,
+            materialId
             );
 
             if (!isExposed) continue;
