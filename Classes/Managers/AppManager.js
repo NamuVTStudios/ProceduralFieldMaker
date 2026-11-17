@@ -143,6 +143,110 @@ exportProject(format, filename = null) {
     );
     }
 
+    /** Importa un proyecto JSON nativo de Procedural Field Maker. */
+    importProjectData(payload) {
+        const importedMap = this._createImportedMapData(payload);
+        this.closeProject();
+        this.mapData = importedMap;
+        this._finishNewProject(payload.mode);
+        return importedMap;
+    }
+
+    _createImportedMapData(payload) {
+        this._validateImportHeader(payload);
+        const materials = this._normalizeImportedMaterials(payload.materials);
+        const seed = String(payload.seed || 'imported-map');
+        const seedHash = Number.isInteger(payload.seedHash) ? payload.seedHash : hashSeedToInt(seed);
+        if (payload.mode === '2d') return this._createImported2DData(payload, materials, seed, seedHash);
+        return this._createImported3DData(payload, materials, seed, seedHash);
+    }
+
+    _validateImportHeader(payload) {
+        if (!payload || payload.format !== 'ProceduralFieldMaker') throw new TypeError('El archivo no es un mapa de Procedural Field Maker.');
+        if (payload.version !== 1) throw new Error(`Versión de mapa no compatible: ${payload.version ?? 'desconocida'}.`);
+        if (!['2d', '3d'].includes(payload.mode)) throw new Error('El archivo no indica un modo 2D o 3D válido.');
+    }
+
+    _normalizeImportedMaterials(rawMaterials) {
+        const source = Array.isArray(rawMaterials) ? rawMaterials : createDefaultMaterials();
+        const materials = source
+            .filter(item => Number.isInteger(Number(item?.id)) && Number(item.id) > 0 && Number(item.id) <= 255)
+            .map(item => ({
+                id: Number(item.id),
+                name: String(item.name || `Material ${item.id}`),
+                color: /^#[0-9a-fA-F]{6}$/.test(item.color || '') || /^#[0-9a-fA-F]{3}$/.test(item.color || '') ? item.color : '#ffffff',
+                hardness: Math.max(0, Number(item.hardness ?? 1) || 0),
+                destructible: item.destructible !== false,
+                textureId: item.textureId ?? null,
+            }));
+        const unique = new Map(materials.map(item => [item.id, item]));
+        if (unique.size === 0) return createDefaultMaterials();
+        return Array.from(unique.values());
+    }
+
+    _createImported2DData(payload, materials, seed, seedHash) {
+        const dimensions = payload.dimensions || {};
+        const width = this._validateImportDimension(dimensions.width, 'ancho');
+        const height = this._validateImportDimension(dimensions.height, 'alto');
+        this._validateImportBufferSize(width * height);
+        const cells = this._createImportedBuffer(payload.cells, width * height, materials);
+        return {
+            width,
+            height,
+            cellSize: Math.max(1, Number(dimensions.cellSize || payload.cellSize || 8)),
+            cells,
+            materials,
+            seed,
+            seedHash,
+            generation: payload.generation || null,
+        };
+    }
+
+    _createImported3DData(payload, materials, seed, seedHash) {
+        const dimensions = payload.dimensions || {};
+        const sizeX = this._validateImportDimension(dimensions.sizeX, 'X');
+        const sizeY = this._validateImportDimension(dimensions.sizeY, 'Y');
+        const sizeZ = this._validateImportDimension(dimensions.sizeZ, 'Z');
+        const total = sizeX * sizeY * sizeZ;
+        this._validateImportBufferSize(total);
+        const voxels = this._createImportedBuffer(payload.voxels, total, materials);
+        return {
+            sizeX,
+            sizeY,
+            sizeZ,
+            chunkSize: Math.max(4, Number(dimensions.chunkSize || 16)),
+            voxels,
+            materials,
+            seed,
+            seedHash,
+            generation: payload.generation || null,
+        };
+    }
+
+    _validateImportDimension(value, label) {
+        const dimension = Number(value);
+        if (!Number.isInteger(dimension) || dimension < 1) throw new Error(`La dimensión ${label} no es válida.`);
+        return dimension;
+    }
+
+    _validateImportBufferSize(total) {
+        if (!Number.isSafeInteger(total) || total > 4194304) throw new Error('El mapa supera el límite de importación de 4.194.304 celdas o vóxeles.');
+    }
+
+    _createImportedBuffer(rawBuffer, expectedLength, materials) {
+        if (!Array.isArray(rawBuffer) || rawBuffer.length !== expectedLength) throw new Error('El contenido del mapa no coincide con sus dimensiones.');
+        const validIds = new Set(materials.map(item => item.id));
+        const buffer = Uint8Array.from(rawBuffer, value => this._validateImportedMaterialId(value, validIds));
+        return buffer;
+    }
+
+    _validateImportedMaterialId(value, validIds) {
+        const materialId = Number(value);
+        if (!Number.isInteger(materialId) || materialId < 0 || materialId > 255) throw new Error('El mapa contiene un ID de material inválido.');
+        if (materialId !== 0 && !validIds.has(materialId)) throw new Error(`El mapa utiliza un material desconocido: ${materialId}.`);
+        return materialId;
+    }
+
     /**
      * Crea un lienzo de trabajo nuevo en la dimensión elegida ('2d' o '3d'):
      * genera el MapData vacío y arranca el renderer correspondiente.
@@ -163,31 +267,32 @@ exportProject(format, filename = null) {
     _replaceProject(mode, options = {}) {
         this.closeProject();
 
-        this.mapData = this._createProjectMapData(mode);
+        this.mapData = this._createProjectMapData(mode, options);
 
-        // Generamos el terreno procedural si el proyecto es 2D.
         if (mode === '2d') {
-        ProceduralMapGenerator.generate2D(this.mapData, {
-            view: options.view ?? 'side'
-        });
-            } else if (mode === '3d') {
-                ProceduralMapGenerator.generate3D(this.mapData);
-            }
+            ProceduralMapGenerator.generate2D(this.mapData, options);
+        } else {
+            ProceduralMapGenerator.generate3D(this.mapData, options);
+        }
+        this._finishNewProject(mode);
+    }
 
+
+
+    _finishNewProject(mode) {
         this.mapLayerManager.initializeProject(this.mapData);
         this.setMode(mode);
     }
 
-
-
-    _createProjectMapData(mode) {
+    _createProjectMapData(mode, options = {}) {
         const settings = DEFAULT_PROJECT_SETTINGS[mode];
-        const config = this._createProjectConfig(settings);
+        const config = this._createProjectConfig(settings, options);
         return this._createMapData(mode, config);
     }
 
-    _createProjectConfig(settings) {
-        return { ...settings, seed: createRandomSeed(), materials: createDefaultMaterials() };
+    _createProjectConfig(settings, options = {}) {
+        const seed = options.seed === undefined ? createRandomSeed() : String(options.seed);
+        return { ...settings, seed, materials: createDefaultMaterials() };
     }
 
     _createMapData(mode, config) {
@@ -213,6 +318,29 @@ exportProject(format, filename = null) {
 
     redo() {
         return this.mapLayerManager.redo();
+    }
+
+    resizeCanvas(dimensions) {
+        return this.mapLayerManager.resizeCanvas(dimensions);
+    }
+
+    /** API para sistemas de juego: explosiones que excavan volumen del terreno. */
+    explodeTerrain(center, options = {}) {
+        return this.mapLayerManager.explodeTerrain(center, options);
+    }
+
+    /** API para impactos de proyectiles o cuerpos rígidos. */
+    applyProjectileImpact(center, options = {}) {
+        return this.mapLayerManager.applyProjectileImpact(center, options);
+    }
+
+    /** API para taladros, rayos o túneles que atraviesan el terreno. */
+    drillTerrain(start, end, options = {}) {
+        return this.mapLayerManager.drillTerrain(start, end, options);
+    }
+
+    damageTerrain(center, options = {}) {
+        return this.mapLayerManager.damageTerrain(center, options);
     }
 
     setMode(mode) {

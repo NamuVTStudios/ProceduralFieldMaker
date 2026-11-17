@@ -29,44 +29,12 @@ class PNGExporter {
         );
 
         for (let i = 0; i < mapData.cells.length; i++) {
-            const materialId = mapData.cells[i];
-            const color = this._getMaterialColor(
-                mapData.materials,
-                materialId
-            );
-
-            const pixelIndex = i * 4;
-
-            if (color) {
-            imageData.data[pixelIndex] = color.r;
-            imageData.data[pixelIndex + 1] = color.g;
-            imageData.data[pixelIndex + 2] = color.b;
-            imageData.data[pixelIndex + 3] = 255;
-        } else {
-            // Los espacios de aire serán transparentes.
-            imageData.data[pixelIndex + 3] = 0;
-        }
+            this._writePixel(imageData.data, i, mapData.materials, mapData.cells[i]);
         }
 
         ctx.putImageData(imageData, 0, 0);
 
-        canvas.toBlob(blob => {
-            if (!blob) {
-                throw new Error("No se pudo generar la imagen PNG.");
-            }
-
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-
-            link.href = url;
-            link.download = filename;
-
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-
-            URL.revokeObjectURL(url);
-        }, "image/png");
+        return this._downloadCanvas(canvas, filename, "No se pudo generar la imagen PNG.");
     }
 
 /**
@@ -124,23 +92,47 @@ class PNGExporter {
 
         ctx.putImageData(imageData, 0, 0);
 
-        canvas.toBlob(blob => {
-            if (!blob) {
-                throw new Error("No se pudo generar el heightmap.");
-            }
+        return this._downloadCanvas(canvas, filename, "No se pudo generar el heightmap.");
+    }
 
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
 
-            link.href = url;
-            link.download = filename;
+    static _writePixel(data, pixelIndex, materials, materialId) {
+        const offset = pixelIndex * 4;
+        const color = this._getMaterialColor(materials, materialId);
+        if (!color) {
+            data[offset + 3] = 0;
+            return;
+        }
+        data[offset] = color.r;
+        data[offset + 1] = color.g;
+        data[offset + 2] = color.b;
+        data[offset + 3] = 255;
+    }
 
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+    static _downloadCanvas(canvas, filename, errorMessage) {
+        return new Promise((resolve, reject) => {
+            canvas.toBlob(blob => this._completeCanvasDownload(blob, filename, errorMessage, resolve, reject), "image/png");
+        });
+    }
 
-            URL.revokeObjectURL(url);
-        }, "image/png");
+    static _completeCanvasDownload(blob, filename, errorMessage, resolve, reject) {
+        if (!blob) {
+            reject(new Error(errorMessage));
+            return;
+        }
+        this._downloadBlob(blob, filename);
+        resolve(true);
+    }
+
+    static _downloadBlob(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
     /**
@@ -157,20 +149,25 @@ class PNGExporter {
             return null;
         }
 
-        // Los IDs comienzan en 1, pero el arreglo comienza en 0.
-        const material = materials?.[materialId - 1];
+        const material = this._findMaterialById(materials, materialId);
+        if (!material) return { r: 255, g: 0, b: 255 };
+        return this._parseMaterialHex(material.color);
+    }
 
-        if (!material) {
-            return { r: 255, g: 0, b: 255 };
-        }
+    static _findMaterialById(materials, materialId) {
+        return materials?.find(item => item.id === materialId) || null;
+    }
 
-        const hex = material.color || "#ff00ff";
-        const normalizedHex = hex.replace("#", "");
-
+    static _parseMaterialHex(color) {
+        const normalized = String(color || '#ff00ff').replace(/^#/, '');
+        const expanded = normalized.length === 3
+            ? normalized.split('').map(value => value + value).join('')
+            : normalized;
+        if (!/^[0-9a-fA-F]{6}$/.test(expanded)) return { r: 255, g: 0, b: 255 };
         return {
-            r: parseInt(normalizedHex.substring(0, 2), 16),
-            g: parseInt(normalizedHex.substring(2, 4), 16),
-            b: parseInt(normalizedHex.substring(4, 6), 16)
+            r: parseInt(expanded.slice(0, 2), 16),
+            g: parseInt(expanded.slice(2, 4), 16),
+            b: parseInt(expanded.slice(4, 6), 16),
         };
     }
 

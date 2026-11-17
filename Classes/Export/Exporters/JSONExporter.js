@@ -21,10 +21,12 @@ class JSONExporter {
                 mode: "2d",
                 dimensions: {
                     width: mapData.width,
-                    height: mapData.height
+                    height: mapData.height,
+                    cellSize: mapData.cellSize ?? 8,
                 },
                 seed: mapData.seed,
                 seedHash: mapData.seedHash,
+                generation: mapData.generation || null,
                 materials: mapData.materials,
                 cells: Array.from(mapData.cells)
             };
@@ -44,6 +46,7 @@ class JSONExporter {
                 },
                 seed: mapData.seed,
                 seedHash: mapData.seedHash,
+                generation: mapData.generation || null,
                 materials: mapData.materials,
                 voxels: Array.from(mapData.voxels)
             };
@@ -75,6 +78,6 @@ class JSONExporter {
         link.click();
 
         document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 }

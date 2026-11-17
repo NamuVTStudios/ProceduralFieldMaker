@@ -236,11 +236,57 @@ class TerrainModificationEngine {
     };
   }
 
-  /** Ejecuta el callback en cada celda/voxel contenido por el radio. */
+  /** Itera las celdas/vóxeles alcanzados por un radio. */
+  forEachCellInRadius(mapData, center, radius, callback) {
+    this._forEachCellInRadius(mapData, center, radius, callback);
+  }
+
+  /** Itera una esfera/círculo y comunica la distancia normalizada al centro. */
   _forEachCellInRadius(mapData, center, radius, callback) {
     const region = this._computeBoundingBox(mapData, center, radius, 0);
-    const context = { center, radiusSq: radius * radius, is3D: this._isMapData3D(mapData), callback };
+    const context = { center, radius, radiusSq: radius * radius, is3D: this._isMapData3D(mapData), callback };
     this._loopRadiusPlanes(region, context);
+  }
+
+  /** Itera un volumen cilíndrico/cápsula alrededor de un segmento. */
+  forEachCellInCapsule(mapData, start, end, radius, callback) {
+    const bounds = this._computeSegmentBounds(mapData, start, end, radius);
+    const context = { start, end, radius, radiusSq: radius * radius, is3D: this._isMapData3D(mapData), callback };
+    this._loopRadiusPlanes(bounds, { center: start, radius, radiusSq: Infinity, is3D: context.is3D, callback: (x, y, z) => this._processCapsuleCell(x, y, z, context) });
+  }
+
+  _computeSegmentBounds(mapData, start, end, radius) {
+    const bounds = this._getMapBounds(mapData);
+    return {
+      minX: Math.max(0, Math.floor(Math.min(start.x, end.x) - radius)),
+      maxX: Math.min(bounds.maxX, Math.ceil(Math.max(start.x, end.x) + radius)),
+      minY: Math.max(0, Math.floor(Math.min(start.y, end.y) - radius)),
+      maxY: Math.min(bounds.maxY, Math.ceil(Math.max(start.y, end.y) + radius)),
+      minZ: bounds.is3D ? Math.max(0, Math.floor(Math.min(start.z ?? 0, end.z ?? 0) - radius)) : 0,
+      maxZ: bounds.is3D ? Math.min(bounds.maxZ, Math.ceil(Math.max(start.z ?? 0, end.z ?? 0) + radius)) : 0,
+    };
+  }
+
+  _processCapsuleCell(x, y, z, context) {
+    const ratio = this._getSegmentDistanceRatio(x, y, z, context);
+    if (ratio > 1) return;
+    context.callback(x, y, z, ratio);
+  }
+
+  _getSegmentDistanceRatio(x, y, z, context) {
+    const closest = this._getClosestSegmentPoint(x, y, z, context.start, context.end, context.is3D);
+    const dx = x - closest.x;
+    const dy = y - closest.y;
+    const dz = context.is3D ? z - closest.z : 0;
+    return Math.sqrt(dx * dx + dy * dy + dz * dz) / Math.max(context.radius, 0.0001);
+  }
+
+  _getClosestSegmentPoint(x, y, z, start, end, is3D) {
+    const delta = { x: end.x - start.x, y: end.y - start.y, z: is3D ? (end.z ?? 0) - (start.z ?? 0) : 0 };
+    const lengthSq = delta.x * delta.x + delta.y * delta.y + delta.z * delta.z;
+    const projection = lengthSq === 0 ? 0 : ((x - start.x) * delta.x + (y - start.y) * delta.y + (is3D ? (z - (start.z ?? 0)) * delta.z : 0)) / lengthSq;
+    const amount = Math.max(0, Math.min(1, projection));
+    return { x: start.x + delta.x * amount, y: start.y + delta.y * amount, z: (start.z ?? 0) + delta.z * amount };
   }
 
   _loopRadiusPlanes(region, context) {
@@ -264,7 +310,8 @@ class TerrainModificationEngine {
   _processRadiusCell(x, y, z, context) {
     const distanceSquared = this._getDistanceSquared(x, y, z, context);
     if (distanceSquared > context.radiusSq) return;
-    context.callback(x, y, z);
+    const distanceRatio = Math.sqrt(distanceSquared) / Math.max(context.radius, 0.0001);
+    context.callback(x, y, z, distanceRatio);
   }
 
   _getDistanceSquared(x, y, z, context) {

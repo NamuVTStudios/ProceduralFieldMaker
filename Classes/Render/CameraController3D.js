@@ -143,6 +143,23 @@ class CameraController3D extends AppObject {
     this.flyCamera.setTarget(this.orbitCamera.target);
   }
 
+  fitToMap() {
+    this._fitOrbitCamera();
+    this._fitFlyCamera();
+  }
+
+  _fitOrbitCamera() {
+    const config = this._getOrbitCameraConfig();
+    this.orbitCamera.target.copyFrom(config.target);
+    this.orbitCamera.radius = config.radius;
+  }
+
+  _fitFlyCamera() {
+    const target = this._getOrbitCameraConfig().target;
+    this.flyCamera.position.copyFrom(this._getFlythroughStartPosition());
+    this.flyCamera.setTarget(target);
+  }
+
   toggleMode() {
     this.mode = this.mode === 'orbit' ? 'flythrough' : 'orbit';
     this._applyMode();

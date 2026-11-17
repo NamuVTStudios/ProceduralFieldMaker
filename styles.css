@@ -113,6 +113,10 @@ button {
     text-align: center;
     color: var(--ui-text);
     padding: 30px;
+    max-height: calc(100dvh - 48px);
+    max-width: min(100%, 860px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 .ui-menu-logo {
@@ -852,4 +856,636 @@ button {
     opacity: .38;
     cursor: not-allowed;
     filter: grayscale(.4);
+}
+/* Opciones básicas de generación procedural (menú inicial). */
+.ui-generation-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
+    gap: 12px 16px;
+    width: min(100%, 620px);
+    margin: 22px auto 0;
+    padding: 16px;
+    text-align: left;
+    color: var(--ui-text);
+    background: rgba(13, 23, 36, .72);
+    border: 1px solid var(--ui-border);
+    border-radius: 12px;
+}
+
+.ui-generation-options > strong {
+    grid-column: 1 / -1;
+}
+
+.ui-generation-input,
+.ui-generation-options input[type="number"] {
+    min-width: 0;
+    width: 100%;
+    padding: 9px 10px;
+    color: var(--ui-text);
+    background: #101c2a;
+    border: 1px solid var(--ui-border);
+    border-radius: 7px;
+}
+
+.ui-generation-toggle,
+.ui-generation-control {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    color: var(--ui-muted);
+    font-size: 13px;
+}
+
+.ui-generation-control {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.ui-generation-range {
+    width: 100%;
+    accent-color: var(--ui-accent);
+}
+
+.ui-generation-materials {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    min-width: 0;
+    margin: 0;
+    padding: 10px 12px 12px;
+    border: 1px solid var(--ui-border);
+    border-radius: 9px;
+}
+
+.ui-generation-materials legend {
+    padding: 0 6px;
+    color: var(--ui-text);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.ui-generation-material-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--ui-muted);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.ui-generation-material-option input {
+    accent-color: var(--ui-accent);
+}
+
+.ui-generation-material-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    background: var(--swatch-color);
+    border: 1px solid rgba(255,255,255,.35);
+}
+
+.ui-generation-all-materials {
+    padding: 5px 9px;
+    color: var(--ui-text);
+    background: #233a53;
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    font-size: 11px;
+}
+
+.ui-generation-status {
+    grid-column: 1 / -1;
+    min-height: 16px;
+    color: #ff9e9e;
+    font-size: 12px;
+}
+
+.ui-export-panel {
+    position: absolute;
+    top: 116px;
+    right: 14px;
+    z-index: 30;
+    display: grid;
+    gap: 12px;
+    width: min(340px, calc(100vw - 28px));
+    padding: 14px;
+    color: var(--ui-text);
+    background: var(--ui-panel);
+    border: 1px solid var(--ui-border);
+    border-radius: 13px;
+    box-shadow: var(--ui-shadow);
+    pointer-events: auto;
+    backdrop-filter: blur(16px);
+}
+
+.ui-export-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.ui-export-field {
+    display: grid;
+    gap: 6px;
+    color: var(--ui-muted);
+    font-size: 12px;
+}
+
+.ui-export-select,
+.ui-export-filename {
+    width: 100%;
+    min-width: 0;
+    min-height: 36px;
+    padding: 7px 9px;
+    color: var(--ui-text);
+    background: #101c2a;
+    border: 1px solid var(--ui-border);
+    border-radius: 7px;
+}
+
+.ui-export-hint,
+.ui-export-status {
+    margin: 0;
+    color: var(--ui-muted);
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.ui-export-status.is-error {
+    color: #ff9e9e;
+}
+
+.ui-export-download {
+    justify-self: stretch;
+}
+
+.ui-export-download:disabled {
+    opacity: .55;
+    cursor: progress;
+}
+
+@media (max-width: 560px) {
+    .ui-generation-options {
+        grid-template-columns: 1fr;
+    }
+    .ui-menu-card {
+        padding: 18px 12px;
+    }
+    .ui-export-panel {
+        top: auto;
+        right: 8px;
+        bottom: 12px;
+    }
+}
+
+
+.ui-generation-help {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: var(--ui-muted, #a7afbd);
+    font-size: 0.78rem;
+    line-height: 1.4;
+}
+
+.ui-generation-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.ui-generation-presets .ui-generation-all-materials {
+    flex: 1 1 auto;
+}
+
+.ui-generation-range-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ui-generation-range-row .ui-generation-range {
+    flex: 1;
+    min-width: 0;
+}
+
+.ui-generation-value {
+    min-width: 42px;
+    color: var(--ui-text, #f2f4f8);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.8rem;
+}
+
+/* Panel para cambiar las dimensiones reales del mapa, no el zoom de cámara. */
+.ui-canvas-size-panel {
+    position: absolute;
+    top: 116px;
+    right: 14px;
+    z-index: 31;
+    display: grid;
+    gap: 12px;
+    width: min(340px, calc(100vw - 28px));
+    max-height: min(72vh, 680px);
+    overflow: auto;
+    padding: 14px;
+    color: var(--ui-text);
+    background: var(--ui-panel);
+    border: 1px solid var(--ui-border);
+    border-radius: 13px;
+    box-shadow: var(--ui-shadow);
+    pointer-events: auto;
+    backdrop-filter: blur(16px);
+}
+
+.ui-canvas-size-fields {
+    display: grid;
+    gap: 10px;
+}
+
+.ui-canvas-size-toggle {
+    border-color: rgba(80, 185, 255, .45);
+}
+
+@media (max-width: 560px) {
+    .ui-canvas-size-panel {
+        top: auto;
+        right: 8px;
+        bottom: 12px;
+    }
+}
+
+/* Menú inicial ampliado: todas las opciones visibles sin scrollbar vertical. */
+.ui-menu {
+    padding: clamp(8px, 1.6vh, 18px);
+    overflow: hidden;
+}
+
+.ui-menu-card {
+    width: min(1260px, calc(100vw - 36px));
+    max-width: 1260px;
+    max-height: none;
+    padding: clamp(16px, 2.2vw, 28px);
+    overflow: hidden;
+}
+
+.ui-menu-layout {
+    display: grid;
+    grid-template-columns: minmax(330px, .82fr) minmax(560px, 1.18fr);
+    align-items: stretch;
+    gap: clamp(14px, 2vw, 24px);
+    width: 100%;
+}
+
+.ui-menu-primary {
+    display: grid;
+    align-content: center;
+    gap: 20px;
+    min-width: 0;
+}
+
+.ui-menu-heading {
+    display: grid;
+    justify-items: center;
+    gap: 6px;
+}
+
+.ui-menu-heading .ui-menu-logo {
+    width: clamp(66px, 8vw, 94px);
+    height: clamp(66px, 8vw, 94px);
+    margin: 0;
+}
+
+.ui-menu-heading .ui-menu-title {
+    font-size: clamp(25px, 2.8vw, 36px);
+}
+
+.ui-menu-heading .ui-menu-subtitle {
+    margin: 0;
+    font-size: 13px;
+}
+
+.ui-menu-primary .ui-menu-options {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+}
+
+.ui-menu-primary .ui-mode-button {
+    width: auto;
+    min-width: 0;
+    padding: 15px 9px;
+    gap: 5px;
+}
+
+.ui-menu-primary .ui-mode-title {
+    font-size: clamp(23px, 2.5vw, 32px);
+}
+
+.ui-menu-primary .ui-mode-desc {
+    font-size: 11px;
+    line-height: 1.3;
+}
+
+.ui-menu-layout > .ui-generation-options {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding: clamp(12px, 1.6vw, 18px);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px 12px;
+    align-content: center;
+}
+
+.ui-menu-layout .ui-generation-help,
+.ui-menu-layout .ui-generation-materials,
+.ui-menu-layout .ui-generation-presets,
+.ui-menu-layout .ui-generation-status,
+.ui-menu-layout > .ui-generation-options > strong {
+    grid-column: 1 / -1;
+}
+
+.ui-menu-layout .ui-generation-help {
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+/* Dock inferior: Tamaño a la izquierda e Importar/Exportar a la derecha. */
+.ui-canvas-size-dock,
+.ui-project-actions-dock {
+    position: fixed;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    z-index: 38;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px;
+    color: var(--ui-text);
+    background: rgba(14, 22, 34, .94);
+    border: 1px solid var(--ui-border);
+    border-radius: 12px;
+    box-shadow: var(--ui-shadow);
+    pointer-events: auto;
+    backdrop-filter: blur(14px);
+}
+
+.ui-canvas-size-dock {
+    left: max(14px, env(safe-area-inset-left));
+}
+
+.ui-project-actions-dock {
+    right: max(14px, env(safe-area-inset-right));
+}
+
+.ui-dock-button {
+    min-height: 40px;
+    padding: 0 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.ui-import-toggle {
+    border-color: rgba(112, 190, 255, .38);
+}
+
+.ui-export-toggle {
+    background: linear-gradient(135deg, #087ed0, #1764a7);
+    border-color: rgba(112, 190, 255, .5);
+}
+
+.ui-project-import-input {
+    display: none !important;
+}
+
+.ui-import-status {
+    max-width: 220px;
+    color: var(--ui-muted);
+    font-size: 10px;
+    line-height: 1.25;
+}
+
+.ui-import-status:empty {
+    display: none;
+}
+
+.ui-import-status.is-error {
+    color: #ff9e9e;
+}
+
+/* Los paneles flotantes se abren hacia arriba desde su dock correspondiente. */
+.ui-export-panel {
+    position: fixed;
+    top: auto;
+    right: max(14px, env(safe-area-inset-right));
+    bottom: calc(66px + env(safe-area-inset-bottom));
+    max-height: min(72vh, 680px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.ui-canvas-size-panel {
+    position: fixed;
+    top: auto;
+    right: auto;
+    left: max(14px, env(safe-area-inset-left));
+    bottom: calc(66px + env(safe-area-inset-bottom));
+    max-height: min(72vh, 680px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.ui-navigation-guide {
+    bottom: calc(68px + env(safe-area-inset-bottom));
+}
+
+@media (max-width: 1060px) {
+    .ui-menu-layout {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .ui-menu-primary {
+        grid-template-columns: minmax(220px, .85fr) minmax(380px, 1.15fr);
+        align-items: center;
+        gap: 14px;
+    }
+
+    .ui-menu-layout > .ui-generation-options {
+        align-content: start;
+    }
+}
+
+@media (max-width: 700px) {
+    .ui-menu {
+        padding: 7px;
+    }
+
+    .ui-menu-card {
+        width: calc(100vw - 14px);
+        padding: 10px;
+    }
+
+    .ui-menu-primary {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    .ui-menu-heading .ui-menu-logo {
+        width: 48px;
+        height: 48px;
+    }
+
+    .ui-menu-heading .ui-menu-title {
+        font-size: 23px;
+    }
+
+    .ui-menu-primary .ui-mode-button {
+        padding: 9px 5px;
+    }
+
+    .ui-menu-primary .ui-mode-title {
+        font-size: 21px;
+    }
+
+    .ui-menu-primary .ui-mode-desc {
+        font-size: 9px;
+    }
+
+    .ui-menu-layout > .ui-generation-options {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        padding: 10px;
+        gap: 7px;
+    }
+
+    .ui-generation-help {
+        font-size: 10px;
+    }
+
+    .ui-canvas-size-dock,
+    .ui-project-actions-dock {
+        bottom: max(7px, env(safe-area-inset-bottom));
+        gap: 5px;
+        padding: 5px;
+    }
+
+    .ui-canvas-size-dock {
+        left: 7px;
+    }
+
+    .ui-project-actions-dock {
+        right: 7px;
+    }
+
+    .ui-dock-button {
+        min-height: 36px;
+        padding: 0 9px;
+        font-size: 10px;
+    }
+
+    .ui-import-status {
+        display: none;
+    }
+
+    .ui-export-panel {
+        right: 7px;
+        bottom: calc(54px + env(safe-area-inset-bottom));
+    }
+
+    .ui-canvas-size-panel {
+        left: 7px;
+        bottom: calc(54px + env(safe-area-inset-bottom));
+    }
+}
+
+@media (max-height: 760px) and (min-width: 701px) {
+    .ui-menu-card {
+        padding: 11px 16px;
+    }
+
+    .ui-menu-primary {
+        gap: 10px;
+    }
+
+    .ui-menu-heading .ui-menu-logo {
+        width: 58px;
+        height: 58px;
+    }
+
+    .ui-menu-heading .ui-menu-title {
+        font-size: 25px;
+    }
+
+    .ui-menu-layout > .ui-generation-options {
+        padding: 10px 12px;
+        gap: 6px 10px;
+    }
+
+    .ui-menu-layout .ui-generation-help {
+        font-size: 10px;
+    }
+}
+
+.ui-menu-open-button {
+    justify-self: center;
+    width: min(100%, 360px);
+    min-height: 40px;
+    margin-top: 2px;
+    border-color: rgba(80, 185, 255, .42);
+    background: rgba(32, 67, 102, .92);
+}
+
+.ui-import-menu-status {
+    min-height: 14px;
+    margin: 0;
+    color: var(--ui-muted);
+    font-size: 10px;
+    text-align: center;
+}
+
+.ui-import-menu-status.is-error {
+    color: #ff9e9e;
+}
+
+@media (max-width: 700px) {
+    .ui-menu-open-button {
+        min-height: 34px;
+        margin-top: 0;
+    }
+}
+
+/* Selección múltiple de capas para la herramienta Mover. */
+.ui-layer-selection-status {
+    padding: 7px 11px 2px;
+    color: var(--ui-muted, #aab9cc);
+    font-size: 10px;
+    line-height: 1.35;
+}
+
+.ui-layer-row.selected {
+    outline: 1px solid rgba(88, 174, 235, .65);
+    background: rgba(37, 116, 169, .22);
+}
+
+.ui-layer-selection-checkbox {
+    flex: 0 0 14px;
+    width: 14px;
+    height: 14px;
+    margin: 0 2px;
+    accent-color: var(--ui-accent, #248bc9);
+    cursor: pointer;
+}
+
+.ui-layer-select-all,
+.ui-layer-select-one {
+    min-height: 27px;
+    padding: 0 7px;
+    font-size: 10px;
 }

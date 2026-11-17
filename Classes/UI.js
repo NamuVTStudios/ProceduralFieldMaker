@@ -10,6 +10,7 @@ class UI {
         this.toolButtons = new Map();
         this.selectedMaterialId = 2;
         this.filterMode = 'destructive';
+        this.generationMaterialInputs = new Map();
         this.layerPanelVisible = true;
         this.isLayerOpacityTransactionOpen = false;
         this._buildInitialView();
@@ -35,7 +36,10 @@ class UI {
 
     _buildFloatingPanels() {
         this._buildLayerPanel();
+        this._buildExportPanel();
+        this._buildCanvasSizePanel();
         this._buildNavigationGuide();
+        this._buildWorkspaceDocks();
     }
 
     _bindResizeEvents() {
@@ -92,9 +96,28 @@ class UI {
 
     _buildMenuCard() {
         const card = this._el('div', 'ui-menu-card');
-        this._appendMenuHeading(card);
-        this._appendMenuOptions(card);
+        const layout = this._el('div', 'ui-menu-layout');
+        this._appendMenuPrimary(layout);
+        layout.appendChild(this._buildGenerationOptions());
+        card.appendChild(layout);
         return card;
+    }
+
+    _appendMenuPrimary(layout) {
+        const primary = this._el('section', 'ui-menu-primary');
+        const heading = this._el('header', 'ui-menu-heading');
+        this._appendMenuHeading(heading);
+        primary.appendChild(heading);
+        primary.appendChild(this._createModeOptions());
+        this.importMenuButton = this._appendActionButton(
+            primary,
+            'Abrir mapa guardado',
+            'ui-action-button ui-menu-open-button',
+            () => this.importInput.click(),
+        );
+        this.importMenuStatus = this._el('p', 'ui-import-menu-status');
+        primary.appendChild(this.importMenuStatus);
+        layout.appendChild(primary);
     }
 
     _appendMenuHeading(card) {
@@ -114,9 +137,189 @@ class UI {
         card.appendChild(this._el('p', 'ui-menu-subtitle', 'Elegí la dimensión del lienzo de trabajo'));
     }
 
-    _appendMenuOptions(card) {
-        const options = this._createModeOptions();
-        card.appendChild(options);
+    _buildGenerationOptions() {
+        const panel = this._el('section', 'ui-generation-options');
+        this._initializeGenerationControls();
+        this._appendGenerationControls(panel);
+        return panel;
+    }
+
+    _initializeGenerationControls() {
+        this.seedInput = this._createSeedInput();
+        this.voronoiEnabled = this._createVoronoiToggle();
+        this.voronoiCellSize = this._createVoronoiCellSizeInput();
+        this.voronoiBlend = this._createVoronoiBlendInput();
+        this.waterLevelInput = this._createWaterLevelInput();
+    }
+
+    _appendGenerationControls(panel) {
+        panel.appendChild(this._el('strong', '', 'Generación procedural'));
+        panel.appendChild(this.seedInput);
+        panel.appendChild(this._createGenerationHelp());
+        panel.appendChild(this.voronoiEnabled.parentElement);
+        panel.appendChild(this._createLabeledControl('Tamaño de celdas Voronoi', this.voronoiCellSize));
+        panel.appendChild(this._createLabeledControl('Influencia Voronoi', this.voronoiBlend));
+        panel.appendChild(this._createWaterLevelControl());
+        panel.appendChild(this._buildGenerationMaterialSelection());
+        this.generationStatus = this._el('div', 'ui-generation-status');
+        panel.appendChild(this.generationStatus);
+    }
+
+    _createGenerationHelp() {
+        return this._el('p', 'ui-generation-help', 'Dejá la semilla vacía para crear un mundo aleatorio. La misma semilla y las mismas opciones reproducen el mismo terreno. El nivel de agua solo actúa si seleccionás Agua.');
+    }
+
+    _createWaterLevelInput() {
+        const input = this._el('input', 'ui-generation-range');
+        input.type = 'range';
+        input.min = '0.05';
+        input.max = '0.90';
+        input.step = '0.01';
+        input.value = '0.65';
+        input.setAttribute('aria-label', 'Nivel del agua para vista lateral y 3D');
+        return input;
+    }
+
+    _createWaterLevelControl() {
+        const wrapper = this._el('label', 'ui-generation-control ui-water-level-control');
+        this._appendWaterLevelHeading(wrapper);
+        wrapper.appendChild(this._createWaterLevelRangeRow());
+        return wrapper;
+    }
+
+    _appendWaterLevelHeading(wrapper) {
+        wrapper.appendChild(this._el('span', '', 'Nivel del agua · lateral y 3D'));
+    }
+
+    _createWaterLevelRangeRow() {
+        const row = this._el('div', 'ui-generation-range-row');
+        this.waterLevelValue = this._el('output', 'ui-generation-value', '65%');
+        row.appendChild(this.waterLevelInput);
+        row.appendChild(this.waterLevelValue);
+        this.waterLevelInput.addEventListener('input', () => this._updateWaterLevelValue());
+        return row;
+    }
+
+    _updateWaterLevelValue() {
+        this.waterLevelValue.textContent = `${Math.round(Number(this.waterLevelInput.value) * 100)}%`;
+    }
+
+    _buildGenerationMaterialSelection() {
+        const group = this._el('fieldset', 'ui-generation-materials');
+        group.appendChild(this._el('legend', '', 'Materiales del terreno'));
+        this.generationMaterialInputs.clear();
+        for (const material of createDefaultMaterials()) this._appendGenerationMaterial(group, material);
+        this._appendGenerationMaterialPresets(group);
+        return group;
+    }
+
+    _appendGenerationMaterial(group, material) {
+        const label = this._el('label', 'ui-generation-material-option');
+        const input = this._el('input');
+        input.type = 'checkbox';
+        input.checked = true;
+        input.value = String(material.id);
+        input.dataset.materialId = String(material.id);
+        const swatch = this._el('span', 'ui-generation-material-swatch');
+        swatch.style.setProperty('--swatch-color', material.color);
+        label.appendChild(input);
+        label.appendChild(swatch);
+        label.appendChild(this._el('span', '', material.name));
+        group.appendChild(label);
+        this.generationMaterialInputs.set(material.id, input);
+    }
+
+    _appendGenerationMaterialPresets(group) {
+        const controls = this._el('div', 'ui-generation-presets');
+        this._appendMaterialPresetButton(controls, 'Terreno básico', [1, 2, 3]);
+        this._appendMaterialPresetButton(controls, 'Todos', null);
+        this._appendMaterialPresetButton(controls, 'Ninguno', []);
+        group.appendChild(controls);
+    }
+
+    _appendMaterialPresetButton(container, label, materialIds) {
+        const button = this._el('button', 'ui-generation-all-materials', label);
+        button.type = 'button';
+        button.addEventListener('click', () => this._applyGenerationMaterialPreset(materialIds));
+        container.appendChild(button);
+    }
+
+    _applyGenerationMaterialPreset(materialIds) {
+        if (materialIds === null) return this._setAllGenerationMaterials(true);
+        for (const [id, input] of this.generationMaterialInputs) {
+            input.checked = materialIds.includes(id);
+        }
+    }
+
+    _setAllGenerationMaterials(enabled) {
+        for (const input of this.generationMaterialInputs.values()) input.checked = enabled;
+    }
+
+    _getSelectedGenerationMaterialIds() {
+        return Array.from(this.generationMaterialInputs.entries())
+            .filter(([, input]) => input.checked)
+            .map(([materialId]) => materialId);
+    }
+
+    _createSeedInput() {
+        const input = this._el('input', 'ui-generation-input');
+        input.type = 'text';
+        input.placeholder = 'Semilla aleatoria (o escribí una semilla)';
+        input.setAttribute('aria-label', 'Semilla procedural');
+        return input;
+    }
+
+    _createVoronoiToggle() {
+        const label = this._el('label', 'ui-generation-toggle');
+        const input = this._el('input');
+        input.type = 'checkbox';
+        input.checked = false;
+        input.setAttribute('aria-label', 'Activar regiones Voronoi');
+        label.appendChild(input);
+        label.appendChild(this._el('span', '', 'Activar regiones Voronoi'));
+        return input;
+    }
+
+    _createVoronoiCellSizeInput() {
+        const input = this._el('input', 'ui-generation-input');
+        input.type = 'number';
+        input.min = '2';
+        input.max = '128';
+        input.step = '1';
+        input.value = '16';
+        input.setAttribute('aria-label', 'Tamaño de celdas Voronoi');
+        return input;
+    }
+
+    _createVoronoiBlendInput() {
+        const input = this._el('input', 'ui-generation-range');
+        input.type = 'range';
+        input.min = '0';
+        input.max = '1';
+        input.step = '0.05';
+        input.value = '0.35';
+        input.setAttribute('aria-label', 'Influencia Voronoi');
+        return input;
+    }
+
+    _createLabeledControl(labelText, control) {
+        const wrapper = this._el('label', 'ui-generation-control');
+        wrapper.appendChild(this._el('span', '', labelText));
+        wrapper.appendChild(control);
+        return wrapper;
+    }
+
+    _readGenerationOptions(view) {
+        const seed = this.seedInput.value.trim();
+        return {
+            view,
+            ...(seed ? { seed } : {}),
+            materialIds: this._getSelectedGenerationMaterialIds(),
+            voronoi: this.voronoiEnabled.checked,
+            voronoiCellSize: Number(this.voronoiCellSize.value) || 16,
+            voronoiBlend: Number(this.voronoiBlend.value),
+            waterLevelRatio: Number(this.waterLevelInput.value),
+        };
     }
 
     
@@ -281,10 +484,13 @@ class UI {
     _getToolVisual(tool) {
         const visuals = {
             Brush: { icon: '✎', label: 'Pincel', title: 'Pincel: agrega material' },
-            Eraser: { icon: '▱', label: 'Goma', title: 'Goma: elimina material' },
+            Eraser: { icon: '⛏', label: 'Excavar', title: 'Excavar: destruye el material visible según su dureza' },
             NoiseBrush: { icon: '▦', label: 'Ruido', title: 'Pincel de ruido procedural' },
             MagicWand: { icon: '✧', label: 'Varita', title: 'Varita mágica: relleno conectado' },
             CloneStamp: { icon: '◉', label: 'Clonar', title: 'Tampón de clonación' },
+            MoveTool: { icon: '✥', label: 'Mover', title: 'Mover el contenido de las capas seleccionadas; Ctrl/Cmd o Shift para seleccionar varias' },
+            TerrainBlastTool: { icon: '✹', label: 'Explosión', title: 'Explosión: clic sobre el terreno para crear un cráter' },
+            TerrainDrillTool: { icon: '⇢', label: 'Taladro', title: 'Taladro: arrastrá sobre el terreno para perforar un túnel' },
         };
         return visuals[tool.name] || { icon: '◇', label: tool.label || tool.name, title: tool.name };
     }
@@ -580,6 +786,333 @@ class UI {
         this.root.appendChild(this.layerPanel);
     }
 
+    _buildCanvasSizePanel() {
+        this.canvasSizePanel = this._el('aside', 'ui-canvas-size-panel ui-hidden force-hidden');
+        this._buildCanvasSizePanelHeader(this.canvasSizePanel);
+        this._buildCanvasSizePanelControls(this.canvasSizePanel);
+        this.root.appendChild(this.canvasSizePanel);
+    }
+
+    _buildWorkspaceDocks() {
+        this._buildCanvasSizeDock();
+        this._buildProjectActionsDock();
+    }
+
+    _buildCanvasSizeDock() {
+        this.canvasSizeDock = this._el('div', 'ui-canvas-size-dock ui-hidden');
+        this._appendActionButton(
+            this.canvasSizeDock,
+            '↔ Tamaño',
+            'ui-action-button ui-dock-button ui-canvas-size-toggle',
+            () => this.toggleCanvasSizePanel(),
+        );
+        this.root.appendChild(this.canvasSizeDock);
+    }
+
+    _buildProjectActionsDock() {
+        this.projectActionsDock = this._el('div', 'ui-project-actions-dock ui-hidden');
+        this.importInput = this._createProjectImportInput();
+        this.importButton = this._appendActionButton(
+            this.projectActionsDock,
+            '↑ Importar',
+            'ui-action-button ui-dock-button ui-import-toggle',
+            () => this.importInput.click(),
+        );
+        this.importButton.title = 'Importar un mapa JSON exportado previamente desde Procedural Field Maker.';
+        this.exportDockButton = this._appendActionButton(
+            this.projectActionsDock,
+            '↓ Exportar',
+            'ui-action-button ui-dock-button ui-export-toggle',
+            () => this.toggleExportPanel(),
+        );
+        this.importStatus = this._el('span', 'ui-import-status');
+        this.projectActionsDock.appendChild(this.importStatus);
+        this.root.appendChild(this.projectActionsDock);
+        this.root.appendChild(this.importInput);
+    }
+
+    _createProjectImportInput() {
+        const input = this._el('input', 'ui-project-import-input');
+        input.type = 'file';
+        input.accept = '.json,application/json';
+        input.setAttribute('aria-label', 'Importar mapa de Procedural Field Maker');
+        input.addEventListener('change', event => this._handleImportFileSelection(event));
+        return input;
+    }
+
+    _handleImportFileSelection(event) {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+        if (!file) return;
+        if (!/\.json$/i.test(file.name)) return this._setImportStatus('Seleccioná un archivo JSON de Procedural Field Maker.', true);
+        this._setImportStatus('Leyendo mapa…');
+        this._readAndImportProject(file);
+    }
+
+    _readAndImportProject(file) {
+        file.text()
+            .then(content => JSON.parse(content))
+            .then(payload => this._completeProjectImport(payload, file))
+            .catch(error => this._setImportStatus(error.message || 'No se pudo importar el mapa.', true));
+    }
+
+    _completeProjectImport(payload, file) {
+        this.appManager.importProjectData(payload);
+        this._closeTransientPanels();
+        this.seedInput.value = payload.seed || '';
+        this.showWorkspace();
+        this._setImportStatus(`Importado: ${file.name}`);
+    }
+
+    _closeTransientPanels() {
+        this.exportPanel.classList.add('force-hidden', 'ui-hidden');
+        this.canvasSizePanel.classList.add('force-hidden', 'ui-hidden');
+    }
+
+    _setImportStatus(message, isError = false) {
+        this.importStatus.textContent = message;
+        this.importMenuStatus.textContent = message;
+        this.importStatus.classList.toggle('is-error', isError);
+        this.importMenuStatus.classList.toggle('is-error', isError);
+    }
+
+    _buildCanvasSizePanelHeader(panel) {
+        const header = this._el('div', 'ui-export-panel-header');
+        header.appendChild(this._el('strong', '', 'Tamaño del lienzo'));
+        this._appendActionButton(header, '×', 'ui-layer-close', () => this.toggleCanvasSizePanel(false));
+        panel.appendChild(header);
+    }
+
+    _buildCanvasSizePanelControls(panel) {
+        this.canvasSizeFields = new Map();
+        this.canvasSizeFieldsContainer = this._el('div', 'ui-canvas-size-fields');
+        panel.appendChild(this.canvasSizeFieldsContainer);
+        this.canvasSizeHelp = this._el('p', 'ui-export-hint', 'El cambio conserva la parte del terreno que entre en las nuevas dimensiones.');
+        panel.appendChild(this.canvasSizeHelp);
+        this.canvasSizeStatus = this._el('p', 'ui-export-status');
+        panel.appendChild(this.canvasSizeStatus);
+        this.canvasSizeApplyButton = this._appendActionButton(panel, 'Aplicar tamaño', 'ui-action-button ui-primary-action ui-export-download', () => this._applyCanvasSize());
+    }
+
+    toggleCanvasSizePanel(forceState) {
+        const isVisible = forceState ?? this.canvasSizePanel.classList.contains('ui-hidden');
+        this.canvasSizePanel.classList.toggle('force-hidden', !isVisible);
+        this.canvasSizePanel.classList.toggle('ui-hidden', !isVisible);
+        this.navigationGuide.classList.toggle('ui-hidden', isVisible || !this.appManager.hasProject());
+        if (!isVisible) return;
+        this.toggleExportPanel(false);
+        this.toggleLayerPanel(false);
+        this.refreshCanvasSizePanel();
+    }
+
+    refreshCanvasSizePanel() {
+        if (!this.canvasSizeFieldsContainer || !this.appManager.mapData) return;
+        this._rebuildCanvasSizeFields();
+        this._updateCanvasSizeHelp();
+    }
+
+    _rebuildCanvasSizeFields() {
+        this.canvasSizeFieldsContainer.replaceChildren();
+        this.canvasSizeFields.clear();
+        this._appendCurrentCanvasDimensions();
+    }
+
+    _appendCurrentCanvasDimensions() {
+        const dimensions = this._getCurrentCanvasDimensions();
+        for (const [key, value] of Object.entries(dimensions)) this._appendCanvasSizeField(key, value);
+    }
+
+    _updateCanvasSizeHelp() {
+        this.canvasSizeHelp.textContent = this.appManager.mode === '3d'
+            ? 'Dimensiones en vóxeles. Máximo total: 4.194.304. El contenido que entre en el nuevo volumen se conserva.'
+            : 'Dimensiones en celdas. Máximo total: 4.194.304. El contenido fuera del nuevo lienzo se recorta.';
+    }
+
+    _getCurrentCanvasDimensions() {
+        const mapData = this.appManager.mapData;
+        if (this.appManager.mode === '3d') return { sizeX: mapData.sizeX, sizeY: mapData.sizeY, sizeZ: mapData.sizeZ };
+        return { width: mapData.width, height: mapData.height };
+    }
+
+    _appendCanvasSizeField(key, value) {
+        const input = this._el('input', 'ui-export-filename');
+        input.type = 'number';
+        input.min = this.appManager.mode === '3d' ? '8' : '16';
+        input.max = this.appManager.mode === '3d' ? '512' : '4096';
+        input.step = '1';
+        input.value = String(value);
+        input.dataset.dimension = key;
+        input.setAttribute('aria-label', this._getCanvasDimensionLabel(key));
+        this.canvasSizeFields.set(key, input);
+        this.canvasSizeFieldsContainer.appendChild(this._createExportField(this._getCanvasDimensionLabel(key), input));
+    }
+
+    _getCanvasDimensionLabel(key) {
+        const labels = { width: 'Ancho · celdas', height: 'Alto · celdas', sizeX: 'Ancho X · vóxeles', sizeY: 'Alto Y · vóxeles', sizeZ: 'Profundidad Z · vóxeles' };
+        return labels[key] || key;
+    }
+
+    _applyCanvasSize() {
+        this.canvasSizeApplyButton.disabled = true;
+        this._runCanvasResize(this._readCanvasSizeInputs());
+    }
+
+    _runCanvasResize(dimensions) {
+        try {
+            const changed = this.appManager.resizeCanvas(dimensions);
+            this._finishCanvasResize(changed, 'Tamaño del lienzo actualizado.');
+        } catch (error) {
+            this._finishCanvasResize(false, error.message || 'No se pudo cambiar el tamaño.', true);
+        }
+    }
+
+    _readCanvasSizeInputs() {
+        return Object.fromEntries(Array.from(this.canvasSizeFields.entries()).map(([key, input]) => [key, Number(input.value)]));
+    }
+
+    _finishCanvasResize(changed, message, isError = false) {
+        this.canvasSizeApplyButton.disabled = false;
+        this.canvasSizeStatus.textContent = changed ? message : (isError ? message : 'El tamaño no cambió.');
+        this.canvasSizeStatus.classList.toggle('is-error', isError);
+        if (changed) this.refreshCanvasSizePanel();
+    }
+
+    _buildExportPanel() {
+        this.exportPanel = this._el('aside', 'ui-export-panel ui-hidden force-hidden');
+        this._buildExportPanelHeader(this.exportPanel);
+        this._buildExportPanelControls(this.exportPanel);
+        this.root.appendChild(this.exportPanel);
+    }
+
+    _buildExportPanelHeader(panel) {
+        const header = this._el('div', 'ui-export-panel-header');
+        header.appendChild(this._el('strong', '', 'Exportar proyecto'));
+        this._appendActionButton(header, '×', 'ui-layer-close', () => this.toggleExportPanel(false));
+        panel.appendChild(header);
+    }
+
+    _buildExportPanelControls(panel) {
+        this.exportFormatSelect = this._el('select', 'ui-export-select');
+        this.exportFilenameInput = this._el('input', 'ui-export-filename');
+        this.exportFilenameInput.type = 'text';
+        this.exportFilenameInput.value = 'procedural-map';
+        this.exportFilenameInput.setAttribute('aria-label', 'Nombre del archivo');
+        panel.appendChild(this._createExportField('Formato', this.exportFormatSelect));
+        panel.appendChild(this._createExportField('Nombre', this.exportFilenameInput));
+        this.exportHint = this._el('p', 'ui-export-hint');
+        panel.appendChild(this.exportHint);
+        this.exportStatus = this._el('p', 'ui-export-status');
+        panel.appendChild(this.exportStatus);
+        this.exportButton = this._appendActionButton(panel, 'Descargar', 'ui-action-button ui-primary-action ui-export-download', () => this._exportCurrentProject());
+        this.exportFormatSelect.addEventListener('change', () => this._refreshExportHint());
+    }
+
+    _createExportField(labelText, control) {
+        const field = this._el('label', 'ui-export-field');
+        field.appendChild(this._el('span', '', labelText));
+        field.appendChild(control);
+        return field;
+    }
+
+    _getExportDefinitions() {
+        const common = [
+            { value: 'json', label: 'JSON · Proyecto editable', extension: 'json' },
+            { value: 'png', label: this.appManager.mode === '3d' ? 'PNG · Heightmap' : 'PNG · Imagen', extension: 'png' },
+        ];
+        if (this.appManager.mode !== '3d') return common;
+        return [
+            ...common,
+            { value: 'glb', label: 'GLB · Modelo 3D', extension: 'glb' },
+            { value: 'unity', label: 'Unity · OBJ + MTL', extension: 'obj' },
+            { value: 'godot', label: 'Godot · OBJ + MTL', extension: 'obj' },
+        ];
+    }
+
+    refreshExportFormats() {
+        if (!this.exportFormatSelect) return;
+        const definitions = this._getExportDefinitions();
+        const previous = this.exportFormatSelect.value;
+        this.exportFormatSelect.replaceChildren();
+        for (const definition of definitions) this._appendExportFormatOption(definition);
+        this.exportFormatSelect.value = definitions.some(item => item.value === previous)
+            ? previous
+            : definitions[0]?.value || '';
+        this._refreshExportHint();
+    }
+
+    _appendExportFormatOption(definition) {
+        const option = this._el('option', '', definition.label);
+        option.value = definition.value;
+        this.exportFormatSelect.appendChild(option);
+    }
+
+    _refreshExportHint() {
+        const format = this.exportFormatSelect?.value;
+        const hints = {
+            json: 'Guarda dimensiones, semilla, materiales y datos de celdas o vóxeles.',
+            png: this.appManager.mode === '3d' ? 'Exporta un heightmap de la superficie del mundo 3D.' : 'Exporta el mapa 2D como imagen PNG con transparencia en el aire.',
+            glb: 'Exporta la geometría 3D con sus materiales en un único archivo GLB.',
+            unity: 'Descarga una malla OBJ y un archivo MTL para importar en Unity. No es todavía un proyecto Unity nativo.',
+            godot: 'Descarga una malla OBJ y un archivo MTL para importar en Godot. No es todavía una escena Godot nativa.',
+        };
+        if (this.exportHint) this.exportHint.textContent = hints[format] || '';
+    }
+
+    toggleExportPanel(forceState) {
+        const isVisible = forceState ?? this.exportPanel.classList.contains('ui-hidden');
+        this.exportPanel.classList.toggle('force-hidden', !isVisible);
+        this.exportPanel.classList.toggle('ui-hidden', !isVisible);
+        if (!isVisible) return;
+        this.toggleCanvasSizePanel(false);
+        this.toggleLayerPanel(false);
+        this.refreshExportFormats();
+    }
+
+    _exportCurrentProject() {
+        if (!this.appManager.hasProject()) return this._setExportStatus('No hay un proyecto abierto.', true);
+        const format = this.exportFormatSelect.value;
+        const filename = this._buildExportFilename(format);
+        this._setExportButtonBusy(true);
+        this._setExportStatus('Preparando la exportación…');
+        this._runExportRequest(format, filename);
+    }
+
+    _buildExportFilename(format) {
+        const definition = this._getExportDefinitions().find(item => item.value === format);
+        const rawName = this.exportFilenameInput.value.trim() || 'procedural-map';
+        const safeName = rawName.replace(/[\\/:*?"<>|]+/g, '-').replace(/\.+$/g, '');
+        const baseName = safeName.replace(/\.[^.]+$/, '') || 'procedural-map';
+        return `${baseName}.${definition?.extension || format}`;
+    }
+
+    _runExportRequest(format, filename) {
+        try {
+            const result = this.appManager.exportProject(format, filename);
+            Promise.resolve(result).then(
+                () => this._finishExportRequest('La descarga fue solicitada correctamente.', false),
+                error => this._finishExportRequest(error.message || 'No se pudo exportar el proyecto.', true),
+            );
+        } catch (error) {
+            this._finishExportRequest(error.message || 'No se pudo exportar el proyecto.', true);
+        }
+    }
+
+    _finishExportRequest(message, isError) {
+        this._setExportButtonBusy(false);
+        this._setExportStatus(message, isError);
+    }
+
+    _setExportButtonBusy(isBusy) {
+        this.exportButton.disabled = isBusy;
+        this.exportButton.textContent = isBusy ? 'Exportando…' : 'Descargar';
+    }
+
+    _setExportStatus(message, isError = false) {
+        if (!this.exportStatus) return;
+        this.exportStatus.textContent = message;
+        this.exportStatus.classList.toggle('is-error', isError);
+    }
+
     _populateLayerPanel(panel) {
         this._buildLayerPanelHeader(panel);
         this._buildLayerPanelList(panel);
@@ -587,7 +1120,9 @@ class UI {
     }
 
     _buildLayerPanelList(panel) {
+        this.layerSelectionStatus = this._el('div', 'ui-layer-selection-status', 'Ctrl/Cmd: varias capas · Shift: seleccionar rango');
         this.layerList = this._el('div', 'ui-layer-list');
+        panel.appendChild(this.layerSelectionStatus);
         panel.appendChild(this.layerList);
     }
 
@@ -604,6 +1139,8 @@ class UI {
 
     _appendLayerHeaderActions(header) {
         this._appendActionButton(header, '+ Nueva', 'ui-layer-add', () => this._createLayer());
+        this._appendActionButton(header, 'Todas', 'ui-layer-select-all', () => this._selectAllLayers());
+        this._appendActionButton(header, 'Una', 'ui-layer-select-one', () => this._clearLayerSelection());
         this._appendActionButton(header, '×', 'ui-layer-close', () => this.toggleLayerPanel(false));
     }
 
@@ -676,6 +1213,22 @@ class UI {
         if (!this.layerList) return;
         this._populateLayerRows();
         this._syncLayerSettings();
+        this._syncLayerSelectionStatus();
+    }
+
+    _syncLayerSelectionStatus() {
+        const count = this.appManager.mapLayerManager.getSelectedLayers().length;
+        this.layerSelectionStatus.textContent = `${count} capa(s) seleccionada(s) · Mover actúa sobre todas` ;
+    }
+
+    _selectAllLayers() {
+        this.appManager.mapLayerManager.selectAllLayers();
+        this.refreshLayerPanel();
+    }
+
+    _clearLayerSelection() {
+        this.appManager.mapLayerManager.clearLayerSelection();
+        this.refreshLayerPanel();
     }
 
     _populateLayerRows() {
@@ -691,16 +1244,29 @@ class UI {
     }
 
     _configureLayerRow(row, layer) {
-        row.classList.toggle('active', layer === this.appManager.mapLayerManager.getActiveLayer());
+        const manager = this.appManager.mapLayerManager;
+        row.classList.toggle('active', layer === manager.getActiveLayer());
+        row.classList.toggle('selected', manager.getSelectedLayers().includes(layer));
         row.classList.toggle('ui-layer-filter-row', layer.kind === 'filter');
         this._appendLayerRowControls(row, layer);
     }
 
     _appendLayerRowControls(row, layer) {
+        this._appendLayerSelectionCheckbox(row, layer);
         this._appendLayerVisibilityButton(row, layer);
         this._appendLayerSelectButton(row, layer);
         this._appendLayerActionButtons(row, layer);
         this._appendLayerMaskControls(row, layer);
+    }
+
+    _appendLayerSelectionCheckbox(row, layer) {
+        const input = this._el('input', 'ui-layer-selection-checkbox');
+        input.type = 'checkbox';
+        input.checked = this.appManager.mapLayerManager.getSelectedLayers().includes(layer);
+        input.title = `Seleccionar ${layer.name} para mover`;
+        input.setAttribute('aria-label', `Seleccionar capa ${layer.name}`);
+        input.addEventListener('change', () => this._toggleLayerSelection(layer));
+        row.appendChild(input);
     }
 
     _appendLayerVisibilityButton(row, layer) {
@@ -721,9 +1287,21 @@ class UI {
     _appendLayerSelectButton(row, layer) {
         const button = this._el('button', 'ui-layer-name', layer.name);
         button.type = 'button';
-        button.title = 'Seleccionar capa';
-        button.addEventListener('click', () => this._selectLayer(layer));
+        button.title = 'Seleccionar capa; Ctrl/Cmd agrega o quita; Shift selecciona un rango';
+        button.addEventListener('click', event => this._selectLayerFromEvent(layer, event));
         row.appendChild(button);
+    }
+
+    _selectLayerFromEvent(layer, event) {
+        const options = { toggle: event.ctrlKey || event.metaKey, range: event.shiftKey };
+        if (options.toggle || options.range) this.appManager.mapLayerManager.setLayerSelection(layer.id, options);
+        else this.appManager.mapLayerManager.setActiveLayer(layer.id);
+        this.refreshLayerPanel();
+    }
+
+    _toggleLayerSelection(layer) {
+        this.appManager.mapLayerManager.setLayerSelection(layer.id, { toggle: true });
+        this.refreshLayerPanel();
     }
 
     _appendLayerMaskControls(row, layer) {
@@ -906,15 +1484,15 @@ class UI {
     }
 
     _get2DNavigationInstructions() {
-        return ['Desplazar: botón central o derecho + arrastrar', 'Zoom: rueda del mouse', 'Dibujar: botón izquierdo'];
+        return ['Desplazar vista: botón central o derecho + arrastrar', 'Zoom: rueda del mouse', 'Mover capas: seleccioná varias y usá Mover', 'Explosión: elegí Explosión y hacé clic', 'Taladro: elegí Taladro y arrastrá para abrir un túnel', 'Excavar: elegí Excavar y arrastrá'];
     }
 
     _getOrbitCameraInstructions() {
-        return ['Orbitar: botón derecho + arrastrar', 'Desplazar: botón central + arrastrar', 'Zoom: rueda del mouse', 'Volar: botón de cámara o Tab'];
+        return ['Orbitar: botón derecho + arrastrar', 'Desplazar: botón central + arrastrar', 'Zoom: rueda del mouse', 'Mover capas: seleccioná varias y usá Mover', 'Explosión: clic con Explosión', 'Taladro: arrastrá con Taladro', 'Excavar: arrastrá con Excavar', 'Volar: botón de cámara o Tab'];
     }
 
     _getFlyCameraInstructions() {
-        return ['Mirar: botón derecho + arrastrar', 'Mover: teclas W / A / S / D', 'Zoom: rueda del mouse', 'Volver a orbitar: botón de cámara o Tab'];
+        return ['Mirar: botón derecho + arrastrar', 'Mover: teclas W / A / S / D', 'Explosión: clic con Explosión', 'Taladro: arrastrá con Taladro', 'Excavar: arrastrá con Excavar', 'Volver a orbitar: botón de cámara o Tab'];
     }
 
     _isFlyCameraActive() {
@@ -932,6 +1510,7 @@ class UI {
 
     showMenu() {
         this.appManager.windowsManager.closeAll();
+        this._closeTransientPanels();
         this._toggleWorkspaceElementsVisibility(false);
         this._toggleMenuVisibility(true);
     }
@@ -957,6 +1536,7 @@ class UI {
     _refreshWorkspacePanels() {
         this.refreshMaterials();
         this.refreshLayerPanel();
+        this.refreshExportFormats();
     }
 
     _toggleMenuVisibility(isVisible) {
@@ -965,8 +1545,13 @@ class UI {
 
     _toggleWorkspaceElementsVisibility(isVisible) {
         this.toolbar.classList.toggle('ui-hidden', !isVisible);
-        this.navigationGuide.classList.toggle('ui-hidden', !isVisible);
+        const sizePanelVisible = !this.canvasSizePanel.classList.contains('force-hidden');
+        this.navigationGuide.classList.toggle('ui-hidden', !isVisible || sizePanelVisible);
         this.layerPanel.classList.toggle('ui-hidden', !isVisible || !this.layerPanelVisible);
+        this.exportPanel.classList.toggle('ui-hidden', !isVisible || this.exportPanel.classList.contains('force-hidden'));
+        this.canvasSizePanel.classList.toggle('ui-hidden', !isVisible || this.canvasSizePanel.classList.contains('force-hidden'));
+        this.canvasSizeDock.classList.toggle('ui-hidden', !isVisible);
+        this.projectActionsDock.classList.toggle('ui-hidden', !isVisible);
     }
 
     _syncActiveViewport() {
@@ -977,8 +1562,19 @@ class UI {
 
     
     _startProject(mode, view = null) {
-        this.appManager.newProject(mode, { view });
+        const options = this._readGenerationOptions(view);
+        if (!this._validateGenerationOptions(options)) return;
+        this.appManager.newProject(mode, options);
         this.showWorkspace();
+    }
+
+    _validateGenerationOptions(options) {
+        if (options.materialIds.length > 0) {
+            this.generationStatus.textContent = '';
+            return true;
+        }
+        this.generationStatus.textContent = 'Seleccioná al menos un material para generar el terreno.';
+        return false;
     }
 
 

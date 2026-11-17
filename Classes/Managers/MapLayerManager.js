@@ -6,6 +6,8 @@ class MapLayerManager {
     this.mapData = null;
     this.layers = [];
     this.activeLayer = null;
+    this.selectedLayerIds = new Set();
+    this.lastSelectedLayerId = null;
     this.intermediateBuffers = [];
     this.finalBuffer = null;
     this.filterWorker = typeof Worker === 'function' && typeof MapFilterWorkerClient === 'function'
@@ -42,6 +44,7 @@ class MapLayerManager {
   _registerBaseLayer(layer) {
     this.layers.push(layer);
     this.activeLayer = layer;
+    this._selectOnlyLayer(layer);
   }
 
   clearProject() {
@@ -49,6 +52,8 @@ class MapLayerManager {
     this.history?.clear();
     this.layers = [];
     this.activeLayer = null;
+    this.selectedLayerIds = new Set();
+    this.lastSelectedLayerId = null;
     this.intermediateBuffers = [];
     this.finalBuffer = null;
     this.mapData = null;
@@ -75,6 +80,7 @@ class MapLayerManager {
       filterName: null,
       filterOptions: null,
       masks: [],
+      overflowContent: [],
       renderSnapshot: this.mapData?.sizeX ? buffer.slice() : null,
     };
   }
@@ -242,6 +248,7 @@ class MapLayerManager {
   _addAndActivateLayer(layer) {
     this.layers.push(layer);
     this.activeLayer = layer;
+    this._selectOnlyLayer(layer);
     this._syncWorkingBuffer();
   }
 
@@ -268,11 +275,16 @@ class MapLayerManager {
 
   _removeLayerReference(layer) {
     this.layers = this.layers.filter(item => item !== layer);
+    this.selectedLayerIds.delete(layer.id);
   }
 
   _restoreActiveLayer(removedLayer) {
-    if (this.activeLayer !== removedLayer) return this._syncWorkingBuffer();
+    if (this.activeLayer !== removedLayer) {
+      this._ensureSelectionContainsActiveLayer();
+      return this._syncWorkingBuffer();
+    }
     this.activeLayer = this._findLayer(removedLayer.sourceLayerId) || this.layers[0];
+    this._ensureSelectionContainsActiveLayer();
     this._syncWorkingBuffer();
   }
 
@@ -280,8 +292,197 @@ class MapLayerManager {
     const layer = this._findLayer(layerId);
     if (!layer) return false;
     this.activeLayer = layer;
+    this._selectOnlyLayer(layer);
     this._syncWorkingBuffer();
+    this._notifyLayerPanelChanged();
     return true;
+  }
+
+  setLayerSelection(layerId, options = {}) {
+    const layer = this._findLayer(layerId);
+    if (!layer) return false;
+    this._applyLayerSelection(layer, options);
+    this._notifyLayerPanelChanged();
+    return true;
+  }
+
+  _applyLayerSelection(layer, options) {
+    if (options.range) return this._selectLayerRange(layer);
+    if (options.toggle) return this._toggleLayerSelection(layer);
+    this._selectOnlyLayer(layer);
+    this.activeLayer = layer;
+    this._syncWorkingBuffer();
+  }
+
+  _selectOnlyLayer(layer) {
+    this.selectedLayerIds = new Set([layer.id]);
+    this.lastSelectedLayerId = layer.id;
+  }
+
+  _toggleLayerSelection(layer) {
+    if (this.selectedLayerIds.has(layer.id)) return this._removeLayerFromSelection(layer);
+    this.selectedLayerIds.add(layer.id);
+    this._setActiveLayerForSelection(layer);
+  }
+
+  _removeLayerFromSelection(layer) {
+    if (this.selectedLayerIds.size <= 1) return;
+    this.selectedLayerIds.delete(layer.id);
+    this._setActiveLayerFromSelection();
+  }
+
+  _setActiveLayerForSelection(layer) {
+    this.activeLayer = layer;
+    this.lastSelectedLayerId = layer.id;
+    this._syncWorkingBuffer();
+  }
+
+  _setActiveLayerFromSelection() {
+    const selectedIds = Array.from(this.selectedLayerIds);
+    const selected = this._findLayer(selectedIds[selectedIds.length - 1]);
+    if (!selected) return;
+    this.activeLayer = selected;
+    this._syncWorkingBuffer();
+  }
+
+  _selectLayerRange(layer) {
+    const anchorIndex = this.layers.findIndex(item => item.id === this.lastSelectedLayerId);
+    const targetIndex = this.layers.indexOf(layer);
+    if (anchorIndex < 0) return this._applyLayerSelection(layer, {});
+    const start = Math.min(anchorIndex, targetIndex);
+    const end = Math.max(anchorIndex, targetIndex);
+    this.selectedLayerIds = new Set(this.layers.slice(start, end + 1).map(item => item.id));
+    this.activeLayer = layer;
+    this._syncWorkingBuffer();
+  }
+
+  _ensureSelectionContainsActiveLayer() {
+    if (!this.activeLayer) return;
+    if (this.selectedLayerIds.size > 0) return;
+    this._selectOnlyLayer(this.activeLayer);
+  }
+
+  getSelectedLayers() {
+    return this.layers.filter(layer => this.selectedLayerIds.has(layer.id));
+  }
+
+  selectAllLayers() {
+    this.selectedLayerIds = new Set(this.layers.map(layer => layer.id));
+    this._notifyLayerPanelChanged();
+    return this.getSelectedLayers();
+  }
+
+  clearLayerSelection() {
+    if (!this.activeLayer) return false;
+    this._selectOnlyLayer(this.activeLayer);
+    this._notifyLayerPanelChanged();
+    return true;
+  }
+
+  translateSelectedLayers(delta) {
+    return this._withHistoryAction('Mover capas', () => this._translateSelectedLayerBuffers(delta));
+  }
+
+  _translateSelectedLayerBuffers(delta) {
+    const offset = this._normalizeLayerTranslation(delta);
+    if (!offset) return false;
+    const targets = this.getSelectedLayers();
+    if (targets.length === 0) return false;
+    for (const layer of targets) this._translateLayerContent(layer, offset);
+    this.compose();
+    this._notifyLayerPanelChanged();
+    return true;
+  }
+
+  _normalizeLayerTranslation(delta) {
+    if (!delta) return null;
+    const offset = { x: Math.trunc(delta.x || 0), y: Math.trunc(delta.y || 0), z: Math.trunc(delta.z || 0) };
+    return offset.x || offset.y || offset.z ? offset : null;
+  }
+
+  _translateLayerContent(layer, offset) {
+    const moved = this._translateBufferWithOverflow(layer.buffer, layer.overflowContent, offset);
+    layer.buffer = moved.buffer;
+    layer.overflowContent = moved.overflow;
+    this._translateLayerMasks(layer.masks, offset);
+    layer.renderSnapshot = this.mapData.sizeX ? layer.buffer.slice() : null;
+    layer.revision = (layer.revision || 0) + 1;
+  }
+
+  _translateLayerMasks(masks, offset) {
+    for (const mask of masks || []) {
+      const moved = this._translateBufferWithOverflow(mask.buffer, mask.overflowContent, offset);
+      mask.buffer = moved.buffer;
+      mask.overflowContent = moved.overflow;
+    }
+  }
+
+  _translateBufferWithOverflow(source, overflowContent = [], offset) {
+    const dimensions = this._getTranslationDimensions();
+    const destination = new Uint8Array(source.length);
+    const nextOverflow = [];
+    this._translateVisibleEntries(source, destination, nextOverflow, offset, dimensions);
+    this._translateOverflowEntries(overflowContent, destination, nextOverflow, offset, dimensions);
+    return { buffer: destination, overflow: nextOverflow };
+  }
+
+  _translateVisibleEntries(source, destination, overflow, offset, dimensions) {
+    for (let index = 0; index < source.length; index++) {
+      this._translateVisibleEntry(source, index, destination, overflow, offset, dimensions);
+    }
+  }
+
+  _translateVisibleEntry(source, index, destination, overflow, offset, dimensions) {
+    const value = source[index];
+    if (value === 0) return;
+    const point = this._decodeBufferIndex(index, dimensions);
+    this._storeTranslatedEntry(destination, overflow, point, value, offset, dimensions);
+  }
+
+  _translateOverflowEntries(entries, destination, overflow, offset, dimensions) {
+    for (const entry of entries || []) {
+      const point = { x: entry[0], y: entry[1], z: entry[2] };
+      this._storeTranslatedEntry(destination, overflow, point, entry[3], offset, dimensions);
+    }
+  }
+
+  _storeTranslatedEntry(destination, overflow, point, value, offset, dimensions) {
+    const target = { x: point.x + offset.x, y: point.y + offset.y, z: point.z + offset.z };
+    if (value === 0) return;
+    if (!this._isTranslationTargetInBounds(target, dimensions)) {
+      overflow.push([target.x, target.y, target.z, value]);
+      return;
+    }
+    destination[this._encodeBufferIndex(target, dimensions)] = value;
+  }
+
+  _getTranslatedBufferIndex(index, offset) {
+    const dimensions = this._getTranslationDimensions();
+    const point = this._decodeBufferIndex(index, dimensions);
+    const target = { x: point.x + offset.x, y: point.y + offset.y, z: point.z + offset.z };
+    if (!this._isTranslationTargetInBounds(target, dimensions)) return -1;
+    return this._encodeBufferIndex(target, dimensions);
+  }
+
+  _getTranslationDimensions() {
+    return this.mapData.sizeX
+      ? { width: this.mapData.sizeX, height: this.mapData.sizeY, depth: this.mapData.sizeZ, is3D: true }
+      : { width: this.mapData.width, height: this.mapData.height, depth: 1, is3D: false };
+  }
+
+  _decodeBufferIndex(index, dimensions) {
+    if (!dimensions.is3D) return { x: index % dimensions.width, y: Math.floor(index / dimensions.width), z: 0 };
+    const planeSize = dimensions.width * dimensions.depth;
+    return { x: index % dimensions.width, y: Math.floor(index / planeSize), z: Math.floor(index / dimensions.width) % dimensions.depth };
+  }
+
+  _isTranslationTargetInBounds(point, dimensions) {
+    return point.x >= 0 && point.x < dimensions.width && point.y >= 0 && point.y < dimensions.height && point.z >= 0 && point.z < dimensions.depth;
+  }
+
+  _encodeBufferIndex(point, dimensions) {
+    if (!dimensions.is3D) return point.y * dimensions.width + point.x;
+    return (point.y * dimensions.depth + point.z) * dimensions.width + point.x;
   }
 
   setLayerBlendMode(layerId, blendMode) {
@@ -326,6 +527,7 @@ class MapLayerManager {
     if (layer.visible || this.activeLayer !== layer) return;
     const sourceLayer = this._findLayer(layer.sourceLayerId);
     this.activeLayer = sourceLayer?.visible ? sourceLayer : this._getVisibleFallback(layer);
+    this._selectOnlyLayer(this.activeLayer);
     this._syncWorkingBuffer();
   }
 
@@ -411,6 +613,8 @@ class MapLayerManager {
     return {
       layerSequence: this._layerSequence,
       activeLayerId: this.activeLayer?.id || null,
+      selectedLayerIds: Array.from(this.selectedLayerIds),
+      dimensions: this._getDimensionSnapshot(),
       layers: this.layers.map(layer => this._cloneLayerForHistory(layer)),
     };
   }
@@ -420,6 +624,7 @@ class MapLayerManager {
       id: layer.id,
       name: layer.name,
       buffer: layer.buffer.slice(),
+      overflowContent: (layer.overflowContent || []).map(entry => entry.slice()),
       blendMode: layer.blendMode,
       visible: layer.visible,
       opacity: layer.opacity,
@@ -434,7 +639,7 @@ class MapLayerManager {
   }
 
   _cloneMaskForHistory(mask) {
-    return { ...mask, options: this._cloneHistoryValue(mask.options), buffer: mask.buffer.slice() };
+    return { ...mask, options: this._cloneHistoryValue(mask.options), buffer: mask.buffer.slice(), overflowContent: (mask.overflowContent || []).map(entry => entry.slice()) };
   }
 
   _cloneHistoryValue(value) {
@@ -444,13 +649,16 @@ class MapLayerManager {
 
   areHistorySnapshotsEqual(first, second) {
     if (first.layerSequence !== second.layerSequence) return false;
+    if (JSON.stringify(first.dimensions) !== JSON.stringify(second.dimensions)) return false;
     if (first.activeLayerId !== second.activeLayerId || first.layers.length !== second.layers.length) return false;
+    if (JSON.stringify(first.selectedLayerIds || []) !== JSON.stringify(second.selectedLayerIds || [])) return false;
     return first.layers.every((layer, index) => this._areHistoryLayersEqual(layer, second.layers[index]));
   }
 
   _areHistoryLayersEqual(first, second) {
     if (!this._areLayerMetadataEqual(first, second)) return false;
     if (!this._areBuffersEqual(first.buffer, second.buffer)) return false;
+    if (JSON.stringify(first.overflowContent || []) !== JSON.stringify(second.overflowContent || [])) return false;
     return this._areMasksEqual(first.masks, second.masks);
   }
 
@@ -468,21 +676,238 @@ class MapLayerManager {
   _areMasksAtIndexEqual(first, second) {
     if (first.id !== second.id || first.name !== second.name || first.type !== second.type || first.enabled !== second.enabled) return false;
     if (first.filterName !== second.filterName || JSON.stringify(first.options) !== JSON.stringify(second.options)) return false;
-    return this._areBuffersEqual(first.buffer, second.buffer);
+    return this._areBuffersEqual(first.buffer, second.buffer) && JSON.stringify(first.overflowContent || []) === JSON.stringify(second.overflowContent || []);
   }
 
   _areBuffersEqual(first, second) {
     if (first.length !== second.length) return false;
-    for (let index = 0; index < first.length; index++) {
-      if (first[index] !== second[index]) return false;
-    }
+    return first.every((value, index) => value === second[index]);
+  }
+
+  resizeCanvas(dimensions) {
+    return this._withHistoryAction('Cambiar tamaño del lienzo', () => this._resizeCanvas(dimensions));
+  }
+
+  _resizeCanvas(dimensions) {
+    this._assertProjectCanResize();
+    const plan = this._createResizePlan(dimensions);
+    if (!plan.changed) return false;
+    return this._applyResizePlan(plan);
+  }
+
+  _assertProjectCanResize() {
+    if (!this.mapData || !this.layers.length) throw new Error('No hay un lienzo abierto.');
+  }
+
+  _createResizePlan(dimensions) {
+    const next = this._validateCanvasDimensions(dimensions);
+    const current = this._getDimensionSnapshot();
+    return { current, next, changed: JSON.stringify(next) !== JSON.stringify(current) };
+  }
+
+  _applyResizePlan(plan) {
+    this._resizeAllLayerBuffers(plan.current, plan.next);
+    this._applyDimensionSnapshot(plan.next);
+    this._rebuildBuffersAfterResize();
     return true;
   }
 
+  _validateCanvasDimensions(dimensions) {
+    if (!this.mapData.sizeX) return this._validate2DDimensions(dimensions);
+    return this._validate3DDimensions(dimensions);
+  }
+
+  _validate2DDimensions(dimensions) {
+    const width = Math.floor(Number(dimensions.width));
+    const height = Math.floor(Number(dimensions.height));
+    if (!Number.isFinite(width) || !Number.isFinite(height)) throw new TypeError('El ancho y el alto deben ser números válidos.');
+    if (width < 16 || height < 16 || width > 4096 || height > 4096 || width * height > 4194304) {
+      throw new RangeError('El lienzo 2D admite entre 16 y 4096 celdas por eje, con un máximo de 4.194.304 celdas.');
+    }
+    return { width, height };
+  }
+
+  _validate3DDimensions(dimensions) {
+    const sizeX = Math.floor(Number(dimensions.sizeX));
+    const sizeY = Math.floor(Number(dimensions.sizeY));
+    const sizeZ = Math.floor(Number(dimensions.sizeZ));
+    if (![sizeX, sizeY, sizeZ].every(Number.isFinite)) throw new TypeError('Los tres ejes deben ser números válidos.');
+    return this._validate3DVolume(sizeX, sizeY, sizeZ);
+  }
+
+  _validate3DVolume(sizeX, sizeY, sizeZ) {
+    const volume = sizeX * sizeY * sizeZ;
+    if ([sizeX, sizeY, sizeZ].some(value => value < 8 || value > 512) || volume > 4194304) {
+      throw new RangeError('El lienzo 3D admite entre 8 y 512 vóxeles por eje, con un volumen máximo de 4.194.304 vóxeles.');
+    }
+    return { sizeX, sizeY, sizeZ };
+  }
+
+  _getExpectedMapBufferLength() {
+    if (this.mapData.sizeX) return this.mapData.sizeX * this.mapData.sizeY * this.mapData.sizeZ;
+    return this.mapData.width * this.mapData.height;
+  }
+
+  _getDimensionSnapshot() {
+    if (this.mapData.sizeX) return { sizeX: this.mapData.sizeX, sizeY: this.mapData.sizeY, sizeZ: this.mapData.sizeZ };
+    return { width: this.mapData.width, height: this.mapData.height };
+  }
+
+  _restoreDimensionSnapshot(dimensions) {
+    if (!dimensions) return;
+    this._applyDimensionSnapshot(dimensions);
+  }
+
+  _applyDimensionSnapshot(dimensions) {
+    Object.assign(this.mapData, dimensions);
+  }
+
+  _resizeAllLayerBuffers(current, next) {
+    for (const layer of this.layers) this._resizeLayerBuffers(layer, current, next);
+  }
+
+  _resizeLayerBuffers(layer, current, next) {
+    const resized = this._resizeBufferWithOverflow(layer.buffer, layer.overflowContent, current, next);
+    layer.buffer = resized.buffer;
+    layer.overflowContent = resized.overflow;
+    layer.masks = this._resizeLayerMasks(layer.masks, current, next);
+    this._refreshResizedLayerMetadata(layer);
+  }
+
+  _resizeLayerMasks(masks, current, next) {
+    return (masks || []).map(mask => this._resizeMaskWithOverflow(mask, current, next));
+  }
+
+  _resizeMaskWithOverflow(mask, current, next) {
+    const resized = this._resizeBufferWithOverflow(mask.buffer, mask.overflowContent, current, next);
+    return { ...mask, buffer: resized.buffer, overflowContent: resized.overflow };
+  }
+
+  _resizeBufferWithOverflow(source, overflowContent = [], current, next) {
+    const currentDimensions = this._describeDimensions(current);
+    const nextDimensions = this._describeDimensions(next);
+    const targetLength = this._getBufferLength(nextDimensions);
+    const destination = new Uint8Array(targetLength);
+    const nextOverflow = [];
+    this._resizeVisibleEntries(source, destination, nextOverflow, currentDimensions, nextDimensions);
+    this._resizeOverflowEntries(overflowContent, destination, nextOverflow, nextDimensions);
+    return { buffer: destination, overflow: nextOverflow };
+  }
+
+  _describeDimensions(dimensions) {
+    if (dimensions.width) return { width: dimensions.width, height: dimensions.height, depth: 1, is3D: false };
+    return { width: dimensions.sizeX, height: dimensions.sizeY, depth: dimensions.sizeZ, is3D: true };
+  }
+
+  _getBufferLength(dimensions) {
+    return dimensions.width * dimensions.height * dimensions.depth;
+  }
+
+  _resizeVisibleEntries(source, destination, overflow, current, next) {
+    for (let index = 0; index < source.length; index++) {
+      this._resizeVisibleEntry(source, index, destination, overflow, current, next);
+    }
+  }
+
+  _resizeVisibleEntry(source, index, destination, overflow, current, next) {
+    const value = source[index];
+    if (value === 0) return;
+    const point = this._decodeBufferIndex(index, current);
+    this._storeResizedEntry(destination, overflow, point, value, next);
+  }
+
+  _resizeOverflowEntries(entries, destination, overflow, dimensions) {
+    for (const entry of entries || []) {
+      const point = { x: entry[0], y: entry[1], z: entry[2] };
+      this._storeResizedEntry(destination, overflow, point, entry[3], dimensions);
+    }
+  }
+
+  _storeResizedEntry(destination, overflow, point, value, dimensions) {
+    if (!this._isTranslationTargetInBounds(point, dimensions)) {
+      overflow.push([point.x, point.y, point.z, value]);
+      return;
+    }
+    destination[this._encodeBufferIndex(point, dimensions)] = value;
+  }
+
+  _refreshResizedLayerMetadata(layer) {
+    layer.renderSnapshot = this.mapData.sizeX ? layer.buffer.slice() : null;
+    layer.revision = (layer.revision || 0) + 1;
+  }
+
+  _resizeBuffer(source, current, next) {
+    return current.width
+      ? this._resize2DBuffer(source, current, next)
+      : this._resize3DBuffer(source, current, next);
+  }
+
+  _resize2DBuffer(source, current, next) {
+    const target = new Uint8Array(next.width * next.height);
+    const rows = Math.min(current.height, next.height);
+    const columns = Math.min(current.width, next.width);
+    this._copy2DRows(source, target, current.width, next.width, rows, columns);
+    return target;
+  }
+
+  _copy2DRows(source, target, sourceWidth, targetWidth, rows, columns) {
+    for (let y = 0; y < rows; y++) {
+      target.set(source.subarray(y * sourceWidth, y * sourceWidth + columns), y * targetWidth);
+    }
+  }
+
+  _resize3DBuffer(source, current, next) {
+    const target = new Uint8Array(next.sizeX * next.sizeY * next.sizeZ);
+    const rows = Math.min(current.sizeY, next.sizeY);
+    const depths = Math.min(current.sizeZ, next.sizeZ);
+    const columns = Math.min(current.sizeX, next.sizeX);
+    this._copy3DRows(source, target, current, next, rows, depths, columns);
+    return target;
+  }
+
+  _copy3DRows(source, target, current, next, rows, depths, columns) {
+    for (let y = 0; y < rows; y++) this._copy3DDepthSlices(source, target, current, next, y, depths, columns);
+  }
+
+  _copy3DDepthSlices(source, target, current, next, y, depths, columns) {
+    for (let z = 0; z < depths; z++) {
+      const sourceStart = (y * current.sizeZ + z) * current.sizeX;
+      const targetStart = (y * next.sizeZ + z) * next.sizeX;
+      target.set(source.subarray(sourceStart, sourceStart + columns), targetStart);
+    }
+  }
+
+  _rebuildBuffersAfterResize() {
+    this._resetWorkingBufferForCurrentDimensions();
+    this.compose({ render: false });
+    this._notifyResizeComplete();
+  }
+
+  _notifyResizeComplete() {
+    this._notifyCanvasDimensionsChanged();
+    this._notifyLayerPanelChanged();
+  }
+
+  _resetWorkingBufferForCurrentDimensions() {
+    const length = this.activeLayer?.buffer.length || this._getExpectedMapBufferLength();
+    this._allocateIntermediateBuffers(length);
+    this._workingMapData = { ...this.mapData };
+    this._syncWorkingBuffer();
+  }
+
+  _notifyCanvasDimensionsChanged() {
+    const renderer = this.appManager.renderer;
+    if (typeof renderer?.onMapDimensionsChanged === 'function') renderer.onMapDimensionsChanged();
+    else this._renderComposedMap();
+    this.appManager.ui?.refreshCanvasSizePanel?.();
+  }
+
   restoreHistorySnapshot(snapshot) {
+    this._restoreDimensionSnapshot(snapshot.dimensions);
     this._restoreSnapshotLayers(snapshot.layers);
     this._restoreSnapshotMetadata(snapshot);
     this._restoreSnapshotActiveLayer(snapshot.activeLayerId);
+    this._restoreSnapshotSelection(snapshot.selectedLayerIds || [snapshot.activeLayerId]);
     this._refreshRestoredProject();
   }
 
@@ -498,18 +923,213 @@ class MapLayerManager {
     this.activeLayer = this.layers.find(layer => layer.id === layerId) || this.layers[0] || null;
   }
 
+  _restoreSnapshotSelection(layerIds) {
+    const validIds = layerIds.filter(id => this._findLayer(id));
+    this.selectedLayerIds = new Set(validIds);
+    this._ensureSelectionContainsActiveLayer();
+  }
+
   _refreshRestoredProject() {
-    this._syncWorkingBuffer();
+    this._resetWorkingBufferForCurrentDimensions();
     this.compose({ render: false });
-    this._renderComposedMap();
-    this._notifyLayerPanelChanged();
+    this._notifyResizeComplete();
   }
 
   _restoreLayerFromHistory(snapshot) {
-    const layer = { ...snapshot, buffer: snapshot.buffer.slice() };
+    const layer = { ...snapshot, buffer: snapshot.buffer.slice(), overflowContent: (snapshot.overflowContent || []).map(entry => entry.slice()) };
     layer.masks = snapshot.masks.map(mask => this._cloneMaskForHistory(mask));
     layer.renderSnapshot = this.mapData?.sizeX ? layer.buffer.slice() : null;
     return layer;
+  }
+
+  /** Excavación manual uniforme: conserva la herramienta Excavar. */
+  eraseVisibleTerrain(center, radius, impactEnergy) {
+    return this._withHistoryAction('Excavar terreno', () => this._damageTerrainInRadius(center, radius, impactEnergy, 0));
+  }
+
+  /** API de juego: explosión radial con reducción de energía por distancia. */
+  explodeTerrain(center, options = {}) {
+    const radius = this._normalizeDamageRadius(options.radius, 5);
+    const energy = this._normalizeDamageEnergy(options.energy, 8);
+    const falloff = this._normalizeDamageFalloff(options.falloff, 0.55);
+    return this._withHistoryAction('Explosión de terreno', () => this._damageTerrainInRadius(center, radius, energy, falloff));
+  }
+
+  /** API de juego: impacto puntual de proyectil o cuerpo rígido. */
+  applyProjectileImpact(center, options = {}) {
+    const radius = this._normalizeDamageRadius(options.radius, 2.5);
+    const energy = this._normalizeDamageEnergy(options.energy, 7);
+    const falloff = this._normalizeDamageFalloff(options.falloff, 0.7);
+    return this._withHistoryAction('Impacto sobre terreno', () => this._damageTerrainInRadius(center, radius, energy, falloff));
+  }
+
+  /** API de juego: perfora una cápsula entre dos puntos (taladro, rayo o túnel). */
+  drillTerrain(start, end, options = {}) {
+    const radius = this._normalizeDamageRadius(options.radius, 1.5);
+    const energy = this._normalizeDamageEnergy(options.energy, 10);
+    const falloff = this._normalizeDamageFalloff(options.falloff, 0.25);
+    return this._withHistoryAction('Perforación de terreno', () => this._damageTerrainAlongSegment(start, end, radius, energy, falloff));
+  }
+
+  damageTerrain(center, options = {}) {
+    return this.explodeTerrain(center, options);
+  }
+
+  _normalizeDamageRadius(value, fallback) {
+    const radius = Number(value);
+    return Number.isFinite(radius) ? Math.max(0.5, Math.min(128, radius)) : fallback;
+  }
+
+  _normalizeDamageEnergy(value, fallback) {
+    const energy = Number(value);
+    return Number.isFinite(energy) ? Math.max(0, Math.min(1000, energy)) : fallback;
+  }
+
+  _normalizeDamageFalloff(value, fallback) {
+    const falloff = Number(value);
+    return Number.isFinite(falloff) ? Math.max(0, Math.min(1, falloff)) : fallback;
+  }
+
+  _damageTerrainInRadius(center, radius, energy, falloff) {
+    if (!this._canDamageTerrain()) return { changedCount: 0 };
+    const context = this._createTerrainEraseContext(energy, falloff);
+    this._iterateDamageRadius(context, center, radius);
+    return this._finalizeTerrainDamage(context);
+  }
+
+  _iterateDamageRadius(context, center, radius) {
+    this.appManager.destructionEngine.forEachCellInRadius(
+      this.mapData, center, radius,
+      (x, y, z, ratio) => this._eraseTopVisibleLayerAt(context, x, y, z, ratio)
+    );
+  }
+
+  _damageTerrainAlongSegment(start, end, radius, energy, falloff) {
+    if (!this._canDamageTerrain()) return { changedCount: 0 };
+    const context = this._createTerrainEraseContext(energy, falloff);
+    this._iterateDamageSegment(context, start, end, radius);
+    return this._finalizeTerrainDamage(context);
+  }
+
+  _iterateDamageSegment(context, start, end, radius) {
+    this.appManager.destructionEngine.forEachCellInCapsule(
+      this.mapData, start, end, radius,
+      (x, y, z, ratio) => this._eraseTopVisibleLayerAt(context, x, y, z, ratio)
+    );
+  }
+
+  _canDamageTerrain() {
+    return Boolean(this.mapData && this.layers.length);
+  }
+
+  _createTerrainEraseContext(impactEnergy, falloff = 0) {
+    return {
+      impactEnergy,
+      falloff,
+      changedCount: 0,
+      touchedLayers: new Set(),
+      dirtyChunks: new Set(),
+      is3D: Boolean(this.mapData.sizeX),
+    };
+  }
+
+  _eraseTopVisibleLayerAt(context, x, y, z, distanceRatio = 0) {
+    const target = this._resolveDamageTarget(context, x, y, z, distanceRatio);
+    if (!target) return;
+    this._applyDamageTarget(target, context);
+  }
+
+  _resolveDamageTarget(context, x, y, z, distanceRatio) {
+    const bufferIndex = this._getBufferIndex(x, y, z, context.is3D);
+    const target = this._findTopVisibleMaterialLayer(bufferIndex);
+    if (!target) return null;
+    if (!this._canDamageTargetAtDistance(target, context, distanceRatio)) return null;
+    return { ...target, bufferIndex };
+  }
+
+  _canDamageTargetAtDistance(target, context, distanceRatio) {
+    const energy = this._getEnergyAtDistance(context, distanceRatio);
+    return this._canEraseVisibleMaterial(target.materialId, energy);
+  }
+
+  _applyDamageTarget(target, context) {
+    this._clearLayerMaterialAt(target.layer, target.bufferIndex);
+    this._recordTerrainErase(target.layer, target.bufferIndex, context);
+  }
+
+  _getEnergyAtDistance(context, distanceRatio) {
+    const attenuation = 1 - context.falloff * Math.min(1, distanceRatio);
+    return context.impactEnergy * attenuation;
+  }
+
+  _finalizeTerrainDamage(context) {
+    this._finalizeTerrainErase(context);
+    return { changedCount: context.changedCount, dirtyChunks: new Set(context.dirtyChunks) };
+  }
+
+  _getBufferIndex(x, y, z, is3D) {
+    if (is3D) return getVoxelIndex3D(this.mapData, x, y, z);
+    return getCellIndex2D(this.mapData, x, y);
+  }
+
+  _findTopVisibleMaterialLayer(bufferIndex) {
+    const reversedLayers = this.layers.slice().reverse();
+    return reversedLayers
+      .map(layer => this._getVisibleLayerMaterial(layer, bufferIndex))
+      .find(Boolean) || null;
+  }
+
+  _getVisibleLayerMaterial(layer, bufferIndex) {
+    if (!layer.visible || layer.opacity <= 0) return null;
+    if (layer.blendMode === 'normal' && layer.opacity < 0.5) return null;
+    const materialId = this._getEffectiveLayerBuffer(layer)[bufferIndex];
+    if (materialId === AIR_MATERIAL_ID) return null;
+    return { layer, materialId };
+  }
+
+  _canEraseVisibleMaterial(materialId, impactEnergy) {
+    const material = (this.mapData.materials || []).find(item => item.id === materialId);
+    if (!material || !material.destructible) return false;
+    return impactEnergy >= Number(material.hardness ?? 1);
+  }
+
+  _clearLayerMaterialAt(layer, bufferIndex) {
+    layer.buffer[bufferIndex] = AIR_MATERIAL_ID;
+    this._clearFilterMaskVoxel(layer, bufferIndex);
+  }
+
+  _clearFilterMaskVoxel(layer, bufferIndex) {
+    for (const mask of layer.masks || []) mask.buffer[bufferIndex] = AIR_MATERIAL_ID;
+  }
+
+  _recordTerrainErase(layer, bufferIndex, context) {
+    layer.revision = (layer.revision || 0) + 1;
+    context.touchedLayers.add(layer);
+    context.changedCount += 1;
+    this._collectEraseDirtyChunks(bufferIndex, context);
+  }
+
+  _collectEraseDirtyChunks(bufferIndex, context) {
+    if (!context.is3D) return;
+    this._addChangedVoxelChunks(
+      bufferIndex,
+      context.dirtyChunks,
+      this.mapData.sizeX,
+      this.mapData.sizeZ,
+      this.mapData.chunkSize || 16
+    );
+  }
+
+  _finalizeTerrainErase(context) {
+    if (context.changedCount === 0) return;
+    this._refreshErasedLayerSnapshots(context.touchedLayers);
+    this.compose({ render: false });
+    this._renderCommittedChanges(context.is3D ? context.dirtyChunks : null);
+    this._notifyLayerPanelChanged();
+  }
+
+  _refreshErasedLayerSnapshots(layers) {
+    for (const layer of layers) layer.renderSnapshot = layer.buffer.slice();
   }
 
   commitChanges({ render = true } = {}) {
@@ -815,6 +1435,7 @@ class MapLayerManager {
       filterName,
       options: { ...options },
       buffer: result.slice(),
+      overflowContent: [],
     };
   }
 

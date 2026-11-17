@@ -38,6 +38,9 @@ class App {
         tm.register(new NoiseBrush(this.appManager));
         tm.register(new MagicWand(this.appManager));
         tm.register(new CloneStamp(this.appManager));
+        tm.register(new MoveTool(this.appManager));
+        tm.register(new TerrainBlastTool(this.appManager));
+        tm.register(new TerrainDrillTool(this.appManager));
     }
 
     _registerDefaultWindows() {
@@ -47,6 +50,8 @@ class App {
         this._registerToolSettingsWindow(wm, 'NoiseBrush', NoiseBrushSettings);
         this._registerToolSettingsWindow(wm, 'MagicWand', MagicWandSettings);
         this._registerToolSettingsWindow(wm, 'CloneStamp', CloneStampSettings);
+        this._registerToolSettingsWindow(wm, 'TerrainBlastTool', TerrainBlastSettings);
+        this._registerToolSettingsWindow(wm, 'TerrainDrillTool', TerrainDrillSettings);
     }
 
     _registerToolSettingsWindow(manager, toolName, WindowType) {

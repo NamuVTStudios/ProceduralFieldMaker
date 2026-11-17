@@ -126,7 +126,8 @@ class HistoryManager {
 
   _estimateLayerBytes(layer) {
     const layerBytes = layer.buffer?.byteLength || 0;
-    return layerBytes + layer.masks.reduce((total, mask) => total + (mask.buffer?.byteLength || 0), 0);
+    const overflowBytes = (layer.overflowContent || []).length * 16;
+    return layerBytes + overflowBytes + layer.masks.reduce((total, mask) => total + (mask.buffer?.byteLength || 0) + (mask.overflowContent || []).length * 16, 0);
   }
 
   undo() {

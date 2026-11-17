@@ -28,7 +28,7 @@ El diseño prioriza el rendimiento estricto en el navegador, el determinismo mat
 | Renderizado 2D | **Pixi.js (WebGL)** | Dibujo por sprites y texturas dinámicas de alto rendimiento. Optimizado mediante regiones sucias (dirty regions). |
 | Renderizado 3D | **Babylon.js** | Distribución UMD/global oficial y mantenida (Three.js discontinuó su build global desde r161). Incluye exportación GLTF/GLB nativa y controles de cámara sin depender de módulos ES, lo que encaja con la arquitectura de `<script>` globales del proyecto. |
 | Cómputo pesado | **Web Workers** | Aislamiento de generación, flood-fill, filtros, CSG y extrusión fuera del hilo de render. |
-| Generación Procedural | **Módulos propios de ruido** | Implementaciones independientes de ruido Perlin, Simplex y Worley para modelado topológico y de cavidades. |
+| Generación Procedural | **Módulos propios de ruido** | Perlin/FBM determinista por semilla, autómatas celulares para cavernas y Voronoi determinista opcional para regiones/biomas. No hay un algoritmo Simplex/Worley independiente en el código revisado. |
 | Arquitectura | **AppManager + AppObject** | Patrón estructural propietario. El manager central orquesta el ciclo de vida unificado de todos los componentes. |
 | Exportación | **Plugins desacoplados** | Arquitectura limpia basada en contratos (Exporter) para añadir nuevos formatos sin alterar el núcleo. |
 | Lenguaje | **JavaScript (ES2022+)** | Tipado simulado por documentación JSDoc para garantizar legibilidad y autocompletado, sin build de tipado. |
@@ -627,3 +627,170 @@ ProceduralFieldMaker/
 - [x] Los cambios de proyecto vacían el historial para impedir restaurar datos de un mapa anterior.
 
 **Empaquetado:** los ZIP de distribución no deben incluir `Assets/CURRENT LOGO.png`. La regla está en `.zipignore` y en el script `package-release.sh`.
+
+
+## 18. Revisión de generación procedural y cierre funcional (2026-11-17)
+
+### Generación confirmada en el código entregado
+- Seed determinista: `NoiseGenerator` deriva `seedHash` y construye una tabla de permutación estable.
+- 2D: Perlin/FBM para vistas superior y lateral; cavernas laterales por autómata celular.
+- 3D: heightmap Perlin/FBM, distribución de materiales por profundidad, agua estática y cavernas con FBM 3D.
+- La versión recibida no incluía Voronoi; se agregó `VoronoiGenerator` determinista por semilla y su integración opcional en superficies 2D superior/lateral y en la superficie 3D. La mezcla se controla mediante `voronoiBlend` y la escala regional con `voronoiCellSize`.
+
+### Cambios de terreno destructible
+La Goma opera ahora contra la composición visible de capas. Busca el material superior visible, comprueba `destructible` y `hardness`, vacía el voxel/celda de esa capa y actualiza los buffers de máscaras para conservar el corte. En 3D calcula chunks afectados y vecinos de frontera antes del remallado.
+
+### Iluminación Babylon.js
+La escena 3D crea una luz hemisférica y una direccional. Los materiales de los chunks reciben iluminación (`disableLighting = false`); el atributo `useVertexColors` se activa en cada malla y los materiales neutros se iluminan con `StandardMaterial`. La escena libera ambas luces al destruir el renderer.
+
+### Semilla reproducible
+`AppManager.newProject(mode, options)` acepta `options.seed`; si no se envía, continúa usando una semilla aleatoria. Los parámetros de generación se pasan al generador del modo correspondiente.
+
+### Estado de exportadores revisado
+JSON cubre 2D/3D; PNG cubre mapa 2D y heightmap 3D; GLB cubre mallas 3D. Los exportadores llamados Unity y Godot producen OBJ+MTL importables, no paquetes nativos de escena/proyecto. La UI expone estos formatos mediante el panel Exportar del espacio de trabajo, filtrado según el modo del proyecto.
+
+
+
+## 19. Integración final: Voronoi configurable y verificación (2026-11-17)
+
+- [x] Semilla opcional configurable desde el menú de creación; vacío significa semilla aleatoria y una misma semilla reproduce el mismo mapa.
+- [x] Voronoi determinista y opcional disponible para vista superior, vista lateral y superficie 3D. Control de tamaño de celda e influencia desde el menú.
+- [x] Voronoi queda desactivado si el usuario lo deja sin marcar, incluso si el control de influencia conserva su valor inicial.
+- [x] PNG busca el material por su ID explícito (no asume que el ID coincide con el índice del array) y admite HEX de 3 o 6 dígitos.
+- [x] `Renderer3D` libera las luces de escena al destruirse; luz hemisférica y direccional verificadas con `BABYLON.NullEngine` 9.28.0.
+- [x] Terreno destructible verificado sobre capas visibles 2D/3D, respetando dureza/destructibilidad y conservando la capa inferior al romper una capa superior.
+- [x] Tests deterministas para 2D/3D, distintos seeds, Voronoi, eraser 2D/3D, undo/redo 3D, JSON y construcción de geometría OBJ/MTL.
+
+### Estado de exportación (revisión del ZIP)
+JSON tiene serialización de mapa 2D/3D; PNG exporta raster 2D y heightmap 3D; GLB utiliza `BABYLON.GLTF2Export` y `VoxelMeshBuilder`, pero su descarga binaria extremo a extremo continúa pendiente de validación en navegador. Unity y Godot generan OBJ+MTL importables, no aún escenas/proyectos nativos. Los formatos se registran en `ExportRegistry`, `AppManager.exportProject()` los expone y el panel Exportar los presenta al usuario según el modo activo.
+
+
+## 20. Material palette, workspace export UI and excavation controls (2026-11-17)
+
+### Generation menu
+- [x] The material palette is configurable before project creation. `Terreno básico` selects material IDs 1/2/3; `Todos` selects all four default materials; `Ninguno` clears the selection so the validation message can explain that at least one material is required; custom selection remains available through the checkboxes.
+- [x] `materialIds` is treated as an allow-list by `ProceduralMapGenerator`. A non-empty selection never produces a material ID outside that selection. Empty explicit selection raises a descriptive error at the generator layer and is blocked by the UI.
+- [x] Terrain-role fallback excludes Water (ID 4) when at least one solid terrain material is selected, preventing Water from being used as the fallback Rock material.
+- [x] Empty seed means a fresh random seed for each new project. Reusing the same seed and options reproduces the same map. JSON metadata records seed, view, selected IDs, Voronoi settings and water level.
+- [x] Water-level ratio is configurable. It is measured from the base of the terrain; the 2D side view converts it to its top-origin Y coordinate, while 3D uses it as the vertical water table. Top-down 2D uses its noise-based water distribution.
+- [x] Fixed side-view water rasterization to pass the current X column explicitly to the water fill helper; no implicit/shared mutable column state is used.
+
+### Export UI
+- [x] A fixed lower-right project dock exposes Importar and Exportar, separated from the main tool/action toolbar.
+- [x] JSON and PNG are available in 2D; JSON, PNG heightmap, GLB, Unity OBJ+MTL and Godot OBJ+MTL are available in 3D. The menu filters formats according to the active project mode.
+- [x] The user can enter an output file name. The UI sanitizes filesystem-invalid characters and appends the appropriate extension. The lower-right Exportar panel opens upward from its dock.
+- [x] PNG download now returns a Promise from `canvas.toBlob`; the Export panel only reports success after the file blob is available and reports encoding failures through its status element.
+- Unity/Godot exports remain OBJ+MTL interchange files and are not native engine project/scene exporters. GLB uses the Babylon.js GLTF2 serializer and requires the serializer script to be available in the browser.
+
+### Destructible terrain workflow
+- [x] The `Excavar` toolbar tool is the terrain destruction workflow in both 2D and 3D. It removes the topmost visible non-air material in the brush footprint, respecting the material `destructible` flag and configured hardness/impact-energy threshold.
+- [x] Pointer positions are interpolated to produce continuous excavation strokes instead of disconnected circles when pointer events are sparse.
+- [x] 3D excavation marks affected chunks and neighboring boundary chunks for selective remeshing. 2D excavation recomposes the layered cell buffer.
+- [x] A complete excavation stroke is grouped as a single Pointer Events history transaction and can be undone/redone.
+
+### Verification notes
+- Tested all 15 non-empty subsets of the four default material IDs against 2D side and 3D generation; no unselected material ID was emitted.
+- Tested basic three-material preset with Voronoi enabled, all-material generation including water in side/3D modes, deterministic same-seed output and changed-seed variation.
+- Tested excavation on 2D and 3D layers and verified Undo/Redo restores the exact composed buffer.
+- Tested exporter registry formats, JSON metadata serialization and PNG asynchronous download completion with a mocked canvas.
+- JavaScript syntax check passed for all project `.js` files. An end-to-end browser session could not be kept alive in this environment, so visual browser validation remains outstanding.
+
+
+## 21. Gameplay terrain destruction and runtime canvas dimensions (2026-11-17)
+
+### Runtime destruction API
+- [x] `AppManager.explodeTerrain(center, options)` removes a radial region (circle in 2D, sphere in 3D) with configurable radius, energy, and distance falloff.
+- [x] `AppManager.applyProjectileImpact(center, options)` provides a smaller point-impact preset for projectile or rigid-body collision callbacks.
+- [x] `AppManager.drillTerrain(start, end, options)` removes a capsule along a segment for drills, beams, and tunnels in 2D/3D.
+- [x] `AppManager.damageTerrain(center, options)` is a general explosion-style alias. `MapLayerManager` exposes the same operations and records each call as one history transaction.
+- [x] Damage targets the topmost visible non-air layer at each cell/voxel. It checks `destructible` and material `hardness`, clears the impacted material, reveals lower layers, updates masks, and selectively remeshes touched 3D chunks plus boundary neighbors.
+- [x] The manual **Excavar** tool remains unchanged and continues to provide continuous pointer strokes.
+- [x] Gameplay methods return `{ changedCount, dirtyChunks }` so callers can detect whether terrain changed and inspect affected 3D chunks. Coordinates are cell/voxel grid coordinates.
+- [ ] Dynamic debris, rigid-body fragments, and physical collapse are outside this terrain-data API and require a physics/gameplay subsystem.
+
+### Runtime canvas resizing
+- [x] A workspace **Tamaño** panel exposes 2D width/height and 3D X/Y/Z dimensions. It changes map storage dimensions, not camera zoom.
+- [x] The resize preserves all overlapping cell/voxel data across paint layers and filter masks; areas added by growth are initialized as air and areas removed by shrink are clipped.
+- [x] Resize is a HistoryManager action and supports Undo/Redo, including dimension metadata and typed-array buffers.
+- [x] 2D re-renders and fits the world after resize. 3D recreates the grid, pick plane, bounds and axes, refits the camera, and rebuilds chunks.
+- [x] 2D limits: 16-4096 cells per axis, maximum 4,194,304 cells. 3D limits: 8-512 voxels per axis, maximum 4,194,304 voxels. Non-numeric and excessive dimensions are rejected.
+- [x] Package-release script continues excluding `Assets/CURRENT LOGO.png`.
+
+### Verification
+- 2D explosion removes top-layer cells and reveals the underlying material; Undo restores the layer exactly.
+- 3D capsule drilling and projectile impact remove voxels; Undo restores exact voxel data.
+- 2D and 3D resize preserve overlapping data and pass Undo/Redo for dimension and buffer state.
+- Excessive 3D volume is rejected before allocation.
+- Browser visual validation remains necessary for final viewport inspection; automated runtime checks cover the data and manager layers.
+
+
+## 22. Workspace layout and native map import (2026-11-17)
+
+- [x] The workspace **Tamaño** shortcut is docked at the lower-left corner; its dimension panel opens upward from that corner.
+- [x] **Importar** and **Exportar** are docked at the lower-right corner, independently of the editing toolbar. The export panel opens upward from its dock. Import is also available directly from the initial project menu.
+- [x] The initial menu uses a wider two-column layout (mode selection and procedural settings) and removes the menu card's vertical scrollbar. Responsive compact layouts are provided for smaller viewports.
+- [x] Import accepts native Procedural Field Maker JSON maps (2D and 3D, version 1). It restores dimensions, cell size/chunk size, materials, seed, generation metadata and cell/voxel contents.
+- [x] Import validates the format, version, dimensions, payload length, material IDs and 4,194,304-element limit before replacing an open project. Invalid imports leave the current project intact.
+- [x] JSON import restores the flattened composed map as a single editable base layer. It does not reconstruct the original editing layer stack or masks because the current JSON exporter serializes the composed map rather than layer history.
+- [x] JSON export now includes the 2D cell size so a re-import preserves the world scale.
+- [x] Import is currently limited to native `.json` project files. PNG remains an image/heightmap interchange export and is not treated as a complete editable project format.
+
+### Verification
+- Tested native JSON round-trip import for 2D and 3D maps, including dimensions, cellSize/chunkSize, material definitions and seed values.
+- Tested rejection of invalid buffer sizes and dimensions, and confirmed an invalid import does not close or replace the current project.
+- JavaScript syntax and HTML local script references were checked after UI changes. Browser visual validation is still required for final layout confirmation.
+
+## 21. Selección múltiple, traslación de capas y herramientas de destrucción en el editor (2026-11-17)
+
+- [x] `MapLayerManager` mantiene una selección de varias capas sin cambiar la semántica de capa activa para las herramientas de pintura.
+- [x] El panel de capas permite seleccionar por casillas, usar Ctrl/Cmd + clic para agregar/quitar capas y Shift + clic para seleccionar un rango; incluye acciones para seleccionar todas o volver a una sola.
+- [x] `MoveTool` traslada el contenido de las capas seleccionadas en 2D y 3D, incluyendo buffers de máscaras, con recorte en los límites del lienzo e historial Undo/Redo.
+- [x] El movimiento trabaja sobre celdas/vóxeles y no sobre la cámara. Un arrastre acumula una única transacción de historial mediante el controlador Pointer Events.
+- [x] Se agregan `TerrainBlastTool` (clic para explosión/cráter) y `TerrainDrillTool` (arrastrar para crear un túnel), con ventanas de configuración para radio, energía y caída de energía.
+- [x] La herramienta `Eraser`/`Excavar` continúa disponible para excavación manual continua.
+- [x] La guía de navegación del editor explica cómo usar Mover, Explosión, Taladro y Excavar; las operaciones de destrucción siguen respetando `destructible` y `hardness` de los materiales.
+- [x] Pruebas de regresión en buffers 2D/3D: selección múltiple, traslación de capas y máscaras, recorte de límites, Undo/Redo y despacho de Move/Blast/Drill.
+
+
+## 23. Pipeline de terreno híbrido 2D de producción (2026-11-17)
+
+Este apartado reemplaza las iteraciones experimentales anteriores de triangulación Delaunay/alpha y Earcut como relleno del terreno.
+
+### Fuente de verdad y contornos
+- [x] `MapData2D.cells` sigue siendo la fuente de verdad para materiales, colisiones, edición, destrucción e historial.
+- [x] `MarchingSquares2D` extrae contornos cerrados por material desde la grilla canónica.
+- [x] `PolylineSimplifier2D` aplica prefiltrado radial y Ramer-Douglas-Peucker para reducir puntos de contorno sin cambiar los datos originales.
+- [x] Los contornos son geometría derivada; nunca reemplazan los datos de las celdas.
+
+### Malla de relleno exacta
+- [x] `TerrainMeshBuilder2D` genera tramos horizontales contiguos de un solo material y combina verticalmente los tramos idénticos en rectángulos.
+- [x] Cada rectángulo homogéneo se triangula en dos triángulos. Los triángulos se mantienen dentro del rectángulo que contiene únicamente el mismo material.
+- [x] La estrategia no puede cubrir aire, cráteres, túneles ni celdas de otro material, porque sus rectángulos se construyen directamente desde las celdas sólidas contiguas.
+- [x] Los cambios de terreno reconstruyen la malla derivada a partir del buffer compuesto actualizado; el buffer de grilla permanece canónico.
+- [x] Para mapas de más de 262.144 celdas o más de 60.000 rectángulos, el builder cambia al renderer directo de grilla para limitar memoria y cantidad de primitivas.
+
+### Algoritmos excluidos del camino de renderizado
+- Delaunay/Alpha Shapes no se utilizan para rellenar el terreno de producción: una triangulación de nube de puntos no garantiza por sí sola el respeto exacto de cada isla, hueco y frontera de material de la grilla.
+- Earcut no se utiliza porque la malla de rectángulos homogéneos evita la necesidad de puentear huecos de polígonos para el relleno rasterizado.
+- Quadtree no se utiliza todavía para reconstrucción local; mantener una estructura espacial sin un flujo de dirty-region correcto añadiría complejidad sin beneficio demostrado.
+- El Voronoi procedural de la generación de mapas se mantiene separado: sigue siendo útil para distribuir regiones/materiales, pero no participa en la triangulación del relleno.
+
+### Límites de alcance
+- El pipeline híbrido se aplica a terreno 2D.
+- El terreno 3D mantiene vóxeles y mallas por chunks en Babylon.js; no se marca Marching Cubes ni Alpha Shapes 3D como implementado.
+- No se incorpora simulación de escombros, rigid bodies ni colapso físico.
+
+### Verificación de esta revisión
+- Se probaron 61 mapas sintéticos: 20 semillas para cada patrón de superficie, ruido mult material y checkerboard, más un mapa de superficie de 128×80.
+- Para cada mapa se verificó que cada rectángulo contiene celdas del mismo material, que no existen rectángulos solapados y que la unión de rectángulos cubre exactamente las celdas no aire.
+- Se verificó que el número de triángulos es exactamente dos por rectángulo y que la malla no introduce cobertura sobre aire ni mezcla materiales.
+- Se verificó el caso de un bloque sólido, material multicolor, islas, huecos y patrones de alta frecuencia.
+- La inspección visual integral en Chromium sigue pendiente; la captura compartida motivó esta sustitución del relleno experimental.
+
+### Referencias de diseño aportadas
+- Marching Squares: reconstrucción de contornos desde la grilla binaria/material.
+- Simplify.js: https://mourner.github.io/simplify-js/ (se usa el enfoque radial + Ramer-Douglas-Peucker, con implementación interna propia).
+- Earcut: https://github.com/mapbox/earcut (evaluado, no usado por el relleno de producción).
+- Delaunator: https://mapbox.github.io/delaunator/ (evaluado, no usado por el relleno de producción).
+- Demostración de terreno destructible/quadtree: https://brotochola.github.io/destructible_terrain_2d/ (referencia arquitectónica; la subdivisión quadtree no se activó porque no aporta todavía a la ruta de render validada).
+- Voronoi/Delaunay/Alpha Shapes: https://www.youtube.com/watch?v=-XCVn73p3xs (Voronoi permanece como técnica de generación procedural; Delaunay y Alpha Shapes no se usan en el relleno del terreno).

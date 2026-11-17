@@ -1,6 +1,6 @@
 /**
  * NoiseGenerator.js
- * Generador matemático de ruido coherente (Perlin/Simplex y FBM) 2D/3D con determinismo por semilla.
+ * Generador matemático de ruido coherente Perlin y FBM 2D/3D con determinismo por semilla.
  * Refactorizado bajo la regla estricta de un máximo de 3 subtareas por método.
  */
 

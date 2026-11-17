@@ -23,6 +23,7 @@ class Renderer3D extends AppObject {
     this.isInitialized = false;
     this.chunks = new Map();
     this.workspaceHelpers = [];
+    this.sceneLights = [];
     this._resizeHandler = () => this._onResize();
   }
 
@@ -80,7 +81,37 @@ class Renderer3D extends AppObject {
 
   _configureSceneEnvironment() {
     this.scene.clearColor = new BABYLON.Color4(0.055, 0.071, 0.09, 1);
-    this.scene.ambientColor = new BABYLON.Color3(0.7, 0.7, 0.7);
+    this.scene.ambientColor = new BABYLON.Color3(0.20, 0.22, 0.25);
+    this._createSceneLighting();
+  }
+
+  _createSceneLighting() {
+    this._createHemisphereLight();
+    this._createDirectionalLight();
+  }
+
+  _createHemisphereLight() {
+    const light = new BABYLON.HemisphericLight(
+      'terrain_hemisphere_light',
+      new BABYLON.Vector3(0, 1, 0),
+      this.scene
+    );
+    light.intensity = 0.85;
+    light.diffuse = new BABYLON.Color3(0.88, 0.92, 1.0);
+    light.groundColor = new BABYLON.Color3(0.22, 0.25, 0.30);
+    this.sceneLights.push(light);
+  }
+
+  _createDirectionalLight() {
+    const light = new BABYLON.DirectionalLight(
+      'terrain_sun_light',
+      new BABYLON.Vector3(-0.55, -1.0, 0.35),
+      this.scene
+    );
+    light.intensity = 0.95;
+    light.diffuse = new BABYLON.Color3(1.0, 0.94, 0.82);
+    light.specular = new BABYLON.Color3(0.18, 0.18, 0.18);
+    this.sceneLights.push(light);
   }
 
   _createWorkspaceHelpers() {
@@ -303,6 +334,18 @@ class Renderer3D extends AppObject {
     this.renderFullMap3D(mapData3D);
   }
 
+  onMapDimensionsChanged() {
+    if (!this.isInitialized) return;
+    this._rebuildWorkspaceHelpers();
+    this.cameraController?.fitToMap?.();
+    this.renderFullMap3D(this.getMapData());
+  }
+
+  _rebuildWorkspaceHelpers() {
+    this._disposeWorkspaceHelpers();
+    this._createWorkspaceHelpers();
+  }
+
   renderDirtyChunks(mapData3D, chunkKeys) {
     if (!this.isInitialized || !mapData3D || !chunkKeys?.size) return;
     for (const key of chunkKeys) this._rebuildChunkFromKey(mapData3D, key);
@@ -471,10 +514,11 @@ class Renderer3D extends AppObject {
   _createVertexColorMaterial(key) {
     const material = new BABYLON.StandardMaterial(`mat_${key}`, this.scene);
     material.backFaceCulling = false;
-    material.disableLighting = true;
+    material.disableLighting = false;
     material.diffuseColor = new BABYLON.Color3(1, 1, 1);
-    material.ambientColor = new BABYLON.Color3(1, 1, 1);
-    material.specularColor = new BABYLON.Color3(0, 0, 0);
+    material.ambientColor = new BABYLON.Color3(0.85, 0.85, 0.85);
+    material.specularColor = new BABYLON.Color3(0.16, 0.16, 0.16);
+    material.emissiveColor = new BABYLON.Color3(0.035, 0.035, 0.035);
     return material;
   }
 
@@ -548,7 +592,13 @@ class Renderer3D extends AppObject {
   _disposeRenderResources() {
     this.clearAllChunks();
     this._disposeWorkspaceHelpers();
+    this._disposeSceneLights();
     this._clearGraphicsEngine();
+  }
+
+  _disposeSceneLights() {
+    for (const light of this.sceneLights) light.dispose();
+    this.sceneLights = [];
   }
 
   _disposeWorkspaceHelpers() {

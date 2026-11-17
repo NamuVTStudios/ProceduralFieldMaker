@@ -14,6 +14,8 @@ class Renderer2D extends AppObject {
     this._destroyed = false;
     this.cameraController = null;
     this.pointerInput = null;
+    this.terrainMeshBuilder = new TerrainMeshBuilder2D();
+    this.lastTerrainMesh = null;
   }
 
   /**
@@ -163,6 +165,14 @@ class Renderer2D extends AppObject {
     this._fitWorld();
   }
 
+  onMapDimensionsChanged() {
+    const mapData = this.appManager.mapData;
+    if (!mapData || !this.terrainGraphics) return;
+    this._drawCanvasFrame(mapData);
+    this.renderFullMap(mapData);
+    this._fitWorld();
+  }
+
   _fitWorld() {
     const context = this._getWorldFitContext();
     if (!context) return;
@@ -206,7 +216,28 @@ class Renderer2D extends AppObject {
   _processMapRendering(mapData2D) {
     const cellSize = mapData2D.cellSize || 16;
     const colorMap = this._createMaterialColorMap(mapData2D.materials);
-    this._drawMapRows(mapData2D, cellSize, colorMap);
+    this.lastTerrainMesh = this.terrainMeshBuilder.build(mapData2D);
+    if (!this._drawHybridTerrainMesh(this.lastTerrainMesh, cellSize, colorMap)) {
+      this._drawMapRows(mapData2D, cellSize, colorMap);
+    }
+  }
+
+  _drawHybridTerrainMesh(mesh, cellSize, colorMap) {
+    if (!mesh || mesh.mode === 'grid-fallback' || !mesh.triangles.length) return false;
+    for (const triangle of mesh.triangles) this._drawMeshTriangle(triangle, cellSize, colorMap);
+    return true;
+  }
+
+  _drawMeshTriangle(triangle, cellSize, colorMap) {
+    const color = colorMap.get(triangle.materialId) || 0xffffff;
+    const points = this._toPixelTriangle(triangle.points, cellSize);
+    this.terrainGraphics.poly(points, true).fill(color);
+  }
+
+  _toPixelTriangle(points, cellSize) {
+    const result = [];
+    for (const point of points) result.push(point.x * cellSize, point.y * cellSize);
+    return result;
   }
 
   _createMaterialColorMap(materials) {
